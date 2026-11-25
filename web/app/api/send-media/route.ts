@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { credenciaisDoDono, metaDoPainel, SESSION_COOKIE } from "@/lib/equipe/autenticar";
+import { assinar, nomeDeQuemEnvia } from "@/lib/equipe/assinatura";
 import { chaveDeSessao } from "@/lib/equipe/sessao";
 import { mimeDoNome, nomeSeguro } from "@/lib/nome-arquivo";
 import { CONTROL_URL } from "@/lib/paths";
@@ -59,6 +60,11 @@ export async function POST(req: Request) {
   const abs = join(dir, randomUUID());
   await writeFile(abs, Buffer.from(await file.arrayBuffer()));
 
+  // Sem legenda, a assinatura vira a legenda; máquina (Basic) e `humano` não têm `meta`.
+  const legenda =
+    typeof caption === "string" && caption.trim() ? caption.trim() : "";
+  const legendaEnviada = meta ? assinar(legenda, await nomeDeQuemEnvia(meta.usuario)) : legenda;
+
   try {
     const res = await fetch(`${CONTROL_URL}/send-media`, {
       method: "POST",
@@ -67,7 +73,7 @@ export async function POST(req: Request) {
         jid,
         kind,
         path: abs,
-        caption: typeof caption === "string" && caption.trim() ? caption.trim() : undefined,
+        caption: legendaEnviada || undefined,
         fileName: kind === "document" ? fileName : undefined,
         mimetype: file.type || mimeDoNome(fileName),
         ...(meta ?? {}),

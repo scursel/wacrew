@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { credenciaisDoDono, metaDoPainel, SESSION_COOKIE } from "@/lib/equipe/autenticar";
+import { assinar, assinarBaloes, nomeDeQuemEnvia } from "@/lib/equipe/assinatura";
 import { chaveDeSessao } from "@/lib/equipe/sessao";
 import { CONTROL_URL } from "@/lib/paths";
 
@@ -53,17 +54,22 @@ export async function POST(req: Request) {
         );
 
   try {
+    // A assinatura é só de quem manda pelo painel; Basic (MCP/plantão/sync) e
+    // `humano: true` não têm `meta` e saem como sempre.
+    const nome = meta ? await nomeDeQuemEnvia(meta.usuario) : null;
+    const baloesEnviados = nome ? assinarBaloes(baloes, nome) : baloes;
+    const textoEnviado = nome ? assinar(text, nome) : text;
     const res = await fetch(`${CONTROL_URL}/send`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         jid: body.jid,
-        text,
+        text: textoEnviado,
         humano: body.humano === true,
         slug: body.slug,
         typos: body.typos === true,
         umBalao: body.umBalao === true,
-        ...(baloes.length ? { baloes } : {}),
+        ...(baloesEnviados.length ? { baloes: baloesEnviados } : {}),
         ...(body.urgencia ? { urgencia: body.urgencia } : {}),
         ...(body.citar ? { citar: body.citar } : {}),
         ...(body.aguardar === true ? { aguardar: true } : {}),

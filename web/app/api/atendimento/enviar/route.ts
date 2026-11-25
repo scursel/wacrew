@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { readGroupRecords } from "@/lib/data";
 import { atendenteDoPedido, exigirChat, irmaosLiberados, respostaDeErro } from "@/lib/equipe/acesso";
+import { assinar, nomeDeQuemEnvia } from "@/lib/equipe/assinatura";
 import { destinoDoSlug } from "@/lib/equipe/destino";
 import { motivoDeRecusa, recentesDaConta, registrosDaConversa } from "@/lib/equipe/envio";
 import { CONTROL_URL } from "@/lib/paths";
@@ -22,10 +23,12 @@ export async function POST(req: Request) {
     const registros = await registrosDaConversa(await irmaosLiberados(a, slug), readGroupRecords);
     const recusa = motivoDeRecusa(texto, recentesDaConta(registros, Date.now()));
     if (recusa) return NextResponse.json({ error: recusa }, { status: 422 });
+    // A revisão rodou no texto cru; a assinatura entra depois, no primeiro balão.
+    const assinado = assinar(texto, await nomeDeQuemEnvia(a.usuario.login));
     const res = await fetch(`${CONTROL_URL}/send`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jid, text: texto, slug, ator: "painel", usuario: a.usuario.login }),
+      body: JSON.stringify({ jid, text: assinado, slug, ator: "painel", usuario: a.usuario.login }),
     }).catch(() => null);
     if (!res) return NextResponse.json({ error: "WhatsApp fora do ar agora — tenta de novo em instantes." }, { status: 502 });
     const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };

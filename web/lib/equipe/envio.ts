@@ -1,15 +1,19 @@
 import { bloqueiosDe } from '../estilo/revisar';
+import { semAssinatura } from './assinatura';
 
 const JANELA_MS = 30 * 60_000;
 
-/** Textos que a conta mandou no chat nos últimos 30 min (base da trava de repetição). */
+/**
+ * Textos que a conta mandou no chat nos últimos 30 min (base da trava de repetição).
+ * Sem a linha de assinatura, senão todo balão do painel "abre igual".
+ */
 export function recentesDaConta(
   records: { fromMe?: boolean; timestamp: string; text: string }[],
   agora: number,
 ): string[] {
   return records
     .filter((r) => r.fromMe && r.text && agora - Date.parse(r.timestamp) <= JANELA_MS)
-    .map((r) => r.text);
+    .map((r) => semAssinatura(r.text));
 }
 
 /**
