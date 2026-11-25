@@ -12,15 +12,13 @@ type Retorno = { tom: "ok" | "erro"; texto: string } | { tom: "senha"; login: st
 
 /**
  * Equipe: contas de quem atende pelo painel. À esquerda a lista; à direita a conta escolhida
- * (dados, senha, ativar, apagar e conversas liberadas) ou o formulário de conta nova.
+ * (dados, senha, ativar e apagar) ou o formulário de conta nova.
  */
 export function EquipeView() {
   const { dados, erro, recarregar } = useCarregar<DadosEquipe>("/api/equipe");
   const [selecionado, setSelecionado] = useState<string | null>(null);
   const [criando, setCriando] = useState(false);
   const [retorno, setRetorno] = useState<Retorno | null>(null);
-  /** Marcações de conversas ainda não salvas, por conta: trocar de conta não perde o que foi marcado. */
-  const [rascunhos, setRascunhos] = useState<Record<string, string[]>>({});
   const detalheRef = useRef<HTMLDivElement>(null);
 
   const usuarios = dados?.usuarios ?? [];
@@ -115,7 +113,7 @@ export function EquipeView() {
             <ContasCard
               usuarios={dados ? usuarios : null}
               selecionado={criando ? null : selecionado}
-              comRascunho={Object.keys(rascunhos)}
+              comRascunho={[]}
               aoEscolher={escolher}
               aoCriar={abrirCriacao}
             />
@@ -136,19 +134,8 @@ export function EquipeView() {
                 <ContaCard
                   key={conta.login}
                   conta={conta}
-                  chats={dados?.chats ?? []}
-                  rascunho={rascunhos[conta.login] ?? null}
-                  aoMudarRascunho={(lista) =>
-                    setRascunhos((r) => {
-                      const prox = { ...r };
-                      if (lista === null) delete prox[conta.login];
-                      else prox[conta.login] = lista;
-                      return prox;
-                    })
-                  }
                   rodar={rodar}
                   aoSenhaNova={(senha) => setRetorno({ tom: "senha", login: conta.login, senha })}
-                  aoAviso={(texto) => setRetorno({ tom: "ok", texto })}
                 />
               )}
             </div>
