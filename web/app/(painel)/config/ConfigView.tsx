@@ -5,6 +5,7 @@ import { CorpoPagina, Grade12 } from "@/app/components/ui";
 import { secaoAtiva } from "@/lib/secao-ativa";
 import { ConexaoCard } from "./ConexaoCard";
 import { GruposCard } from "./GruposCard";
+import { ModelosCard } from "./ModelosCard";
 import { NavSecoes } from "./NavSecoes";
 import { RadarCard } from "./RadarCard";
 import { type IdSecao, type Resumo, SECOES } from "./secoes";
@@ -78,6 +79,7 @@ export function ConfigView() {
           <GruposCard aoResumir={resumir} />
           <RadarCard aoResumir={resumir} />
           <TranscricaoCard aoResumir={resumir} />
+          <ModelosCard aoResumir={resumir} />
           <TimeCard aoResumir={resumir} />
         </Grade12>
       </div>
