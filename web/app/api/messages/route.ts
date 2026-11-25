@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { readGroupMessages } from "@/lib/data";
+import { ultimoAtendimento } from "@/lib/ultimo-atendimento";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,5 +30,10 @@ export async function GET(req: Request) {
   const limit = Number.isFinite(rawLimit) && rawLimit > 0
     ? Math.min(rawLimit, MAX_LIMIT)
     : DEFAULT_LIMIT;
-  return NextResponse.json(await readGroupMessages(slug, { limit, before }));
+  const mensagens = readGroupMessages(slug, { limit, before });
+  if (!before && url.searchParams.get("ultimoAtendimento") === "1") {
+    const [messages, atendimento] = await Promise.all([mensagens, ultimoAtendimento([slug])]);
+    return NextResponse.json({ messages, ultimoAtendimento: atendimento });
+  }
+  return NextResponse.json(await mensagens);
 }

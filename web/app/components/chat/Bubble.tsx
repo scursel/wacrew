@@ -293,6 +293,9 @@ export function Bubble({
   const edge = autoria ? EDGE[autoria.id] : undefined;
   const reacoes = agruparReacoes(m.reactions);
   const celular = autoria?.id === "celular" || autoria?.id === "web" || autoria?.id === "voce";
+  const origemWhatsApp = autoria?.id === "celular" || autoria?.id === "web"
+    ? `Enviada ${autoria.via}`
+    : null;
 
   const corpo = (
     <div
@@ -336,6 +339,11 @@ export function Bubble({
         title={instanteLongo(m.timestamp)}
       >
         {m.edited && !m.deleted && <span className="font-sans">editada</span>}
+        {origemWhatsApp && (
+          <span className="font-sans" role="img" aria-label={origemWhatsApp} title={origemWhatsApp}>
+            ☁️
+          </span>
+        )}
         {horaCurta(m.timestamp)}
         {mine && m.receipt && !m.deleted && <ReceiptMark r={m.receipt} />}
       </span>

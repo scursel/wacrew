@@ -13,7 +13,9 @@ import {
   ultimoGroupJid,
 } from "@/lib/caixa";
 import type { MessageView } from "@/lib/data";
+import { fundirMensagens } from "@/lib/dm-irmaos";
 import { instanteLongo } from "@/lib/formatar-data";
+import type { UltimoAtendimento } from "@/lib/ultimo-atendimento";
 import { Bubble } from "./chat/Bubble";
 import { Composer } from "./chat/Composer";
 import { type Contacts, numberFromJid } from "./chat/format";
@@ -82,6 +84,22 @@ const ROTULO_TIPO: Record<string, string> = {
   sticker: "Figurinha",
 };
 
+function ObservacaoAtendimento({ atendimento }: { atendimento: UltimoAtendimento }) {
+  return (
+    <aside
+      aria-label="Último atendimento"
+      className="my-2 rounded-lg border border-accent-line bg-accent-soft px-3 py-2 text-[12px] leading-relaxed text-fg"
+    >
+      <p className="font-semibold">Conversa reaberta pelo cliente</p>
+      <p className="break-words text-fg-dim">
+        Último atendimento por <strong className="font-medium text-fg">{atendimento.atendente || "responsável não identificado"}</strong>
+        {" · Resolvido em "}
+        <time dateTime={atendimento.resolvidoEm}>{instanteLongo(atendimento.resolvidoEm)}</time>
+      </p>
+    </aside>
+  );
+}
+
 export interface CabecalhoConversa {
   avatarPath: string | null;
   tipo: "grupo" | "dm";
@@ -95,6 +113,7 @@ export function Timeline({
   slug,
   groupName,
   messages: initial,
+  ultimoAtendimentoInicial = null,
   total,
   agoraInicial,
   donoLogin = null,
@@ -105,6 +124,7 @@ export function Timeline({
   slug: string;
   groupName: string;
   messages: MessageView[];
+  ultimoAtendimentoInicial?: UltimoAtendimento | null;
   /** Total real do chat (a lista inicial é só a janela final, paginada). */
   total?: number;
   /** Relógio do servidor, para "hoje"/"ontem" saírem iguais no servidor e no navegador. */
@@ -118,6 +138,8 @@ export function Timeline({
   onAbrirCopiloto?: () => void;
 }) {
   const [messages, setMessages] = useState<MessageView[]>(initial);
+  const [ultimoAtendimento, setUltimoAtendimento] = useState(ultimoAtendimentoInicial);
+  useEffect(() => setUltimoAtendimento(ultimoAtendimentoInicial), [ultimoAtendimentoInicial]);
   const [totalCount, setTotalCount] = useState(total ?? initial.length);
   const [loadingOlder, setLoadingOlder] = useState(false);
   // Há mais histórico acima? (some quando uma paginação volta vazia ou incompleta)
@@ -170,7 +192,7 @@ export function Timeline({
 
   // Pagina o histórico para cima (como no WhatsApp), preservando a posição.
   const loadOlder = useCallback(async () => {
-    const first = messages[0];
+    const first = messages.find((m) => m.type !== "call");
     if (!first || loadingOlder) return;
     setLoadingOlder(true);
     try {
@@ -186,8 +208,8 @@ export function Timeline({
       }
       const el = scrollRef.current;
       const prevHeight = el?.scrollHeight ?? 0;
-      setMessages((cur) => [...older, ...cur]);
-      if (older.length < 150) setHasMore(false);
+      setMessages((cur) => fundirMensagens([older, cur]));
+      if (older.filter((m) => m.type !== "call").length < 150) setHasMore(false);
       // Reancora a rolagem depois que o bloco novo pintar acima.
       requestAnimationFrame(() => {
         if (el) el.scrollTop += el.scrollHeight - prevHeight;
@@ -328,19 +350,24 @@ export function Timeline({
   const lastBodyRef = useRef<string>("");
   const poll = useCallback(async () => {
     try {
-      const res = checarSessao(await fetch(rotas.mensagens(slug), { cache: "no-store" }), rotas);
+      const res = checarSessao(await fetch(rotas.mensagens(slug, { incluirUltimoAtendimento: true }), { cache: "no-store" }), rotas);
       if (!res.ok) return;
       const body = await res.text();
       if (body === lastBodyRef.current) return;
+      const { messages: tail, ultimoAtendimento: atendimento } = JSON.parse(body) as {
+        messages: MessageView[];
+        ultimoAtendimento: UltimoAtendimento | null;
+      };
+      if (!Array.isArray(tail)) return;
       lastBodyRef.current = body;
-      const tail = JSON.parse(body) as MessageView[];
+      setUltimoAtendimento(atendimento);
       // Preserva o histórico paginado acima e troca só a cauda (o que veio agora, por id).
       setMessages((cur) => {
         const ids = new Set(tail.map((m) => m.id));
         const kept = cur.filter((m) => !ids.has(m.id));
         const firstTailTs = tail[0]?.timestamp ?? "";
         const older = kept.filter((m) => m.timestamp <= firstTailTs);
-        const next = [...older, ...tail];
+        const next = fundirMensagens([older, tail]);
         setTotalCount((t) => Math.max(t, next.length));
         return next;
       });
@@ -476,6 +503,9 @@ export function Timeline({
                 </Button>
               </div>
             )}
+            {ultimoAtendimento && !shown.some((m) => m.id === ultimoAtendimento.reabertoPorMensagem) && (
+              <ObservacaoAtendimento atendimento={ultimoAtendimento} />
+            )}
             {shown.length === 0 ? (
               <p className="mt-16 text-center text-[13.5px] text-fg-faint">
                 {mediaFilter === "all" ? "Nenhuma mensagem capturada ainda nesta conversa." : "Nada deste tipo nas mensagens carregadas."}
@@ -498,6 +528,9 @@ export function Timeline({
                 return (
                   <Fragment key={m.id}>
                     {novoDia && <SeparadorDia iso={m.timestamp} agora={agora} />}
+                    {ultimoAtendimento?.reabertoPorMensagem === m.id && (
+                      <ObservacaoAtendimento atendimento={ultimoAtendimento} />
+                    )}
                     {m.type === "call" && m.call ? (
                       <CallLine m={m} />
                     ) : (

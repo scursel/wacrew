@@ -3,6 +3,7 @@ import { conversasDaRequisicao } from "@/lib/caixa-dados";
 import { conversationName, readGroupMessages, readGroupRecords } from "@/lib/data";
 import { dadosDoPainel } from "@/lib/painel-cliente";
 import { readTriage } from "@/lib/triage";
+import { ultimoAtendimento } from "@/lib/ultimo-atendimento";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +35,7 @@ export default async function GroupPage({
       slug={slug}
       groupName={g?.name ?? groupName}
       messages={messages}
+      ultimoAtendimento={await ultimoAtendimento([slug], triage.resolved, registros)}
       total={registros.length}
       painel={painel}
       agora={Date.now()}

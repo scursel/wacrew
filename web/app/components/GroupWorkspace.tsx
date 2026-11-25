@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import type { PainelCliente as DadosPainel } from "@/lib/caixa";
 import type { MessageView } from "@/lib/data";
+import type { UltimoAtendimento } from "@/lib/ultimo-atendimento";
 import { PainelCliente } from "./caixa/PainelCliente";
 import { useRotas } from "./RotasPainel";
 import { Timeline } from "./Timeline";
@@ -24,6 +25,7 @@ export function GroupWorkspace({
   slug,
   groupName,
   messages,
+  ultimoAtendimento,
   total,
   painel,
   agora,
@@ -32,6 +34,7 @@ export function GroupWorkspace({
   slug: string;
   groupName: string;
   messages: MessageView[];
+  ultimoAtendimento?: UltimoAtendimento | null;
   /** Total real de mensagens do chat (a lista acima é só a janela final). */
   total?: number;
   painel: DadosPainel;
@@ -209,6 +212,7 @@ export function GroupWorkspace({
           slug={slug}
           groupName={groupName}
           messages={messages}
+          ultimoAtendimentoInicial={ultimoAtendimento}
           total={total}
           agoraInicial={agora}
           donoLogin={donoLogin}

@@ -64,11 +64,11 @@ A chatbot does not fix that. Canned answers read like a robot, clients notice, a
 
 | | |
 |---|---|
-| ![Today view: who is waiting, AI activity, signals and today's calendar](docs/screenshots/hoje.webp) **Today.** Who is waiting and for how long, what the AI is doing, signals and today's agenda. | ![2D pixel-art office with one desk per client project](docs/screenshots/escritorio.webp) **2D office.** One desk per project. When a client writes, the desk turns red right away, with sound. |
+| **Inbox.** Read and reply to customer messages, with AI assistance available per chat. | ![Today view: who is waiting, AI activity, signals and today's calendar](docs/screenshots/hoje.webp) **Today.** Who is waiting and for how long, what the AI is doing, signals and today's agenda. |
 | ![Dashboard with message volume, first-reply time and who replied](docs/screenshots/dashboard.webp) **Dashboard.** Volume, first-reply time, who answered, busiest clients and deliveries per month. | ![Clients kanban board with waiting time, tags and last message](docs/screenshots/clientes-quadro.webp) **Clients.** Table and board views with contract, deliveries and waiting time per client. |
-| ![Client drawer with the coding agent running in the project's repository](docs/screenshots/ficha-agente-orca.webp) **Agent bridge (optional).** If you use [Orca](https://onorca.dev), the client drawer shows the coding agent working on that project's repo and lets you send it commands. | ![Weekly Google Calendar view inside the panel](docs/screenshots/agenda.webp) **Calendar.** Your Google Calendar inside the panel, editable by you or by the AI. |
+| **2D office.** One desk per project. When a client writes, the desk turns red right away, with sound. | ![Weekly Google Calendar view inside the panel](docs/screenshots/agenda.webp) **Calendar.** Your Google Calendar inside the panel, editable by you or by the AI. |
 
-More screens in [`docs/screenshots/`](docs/screenshots): org chart, team access, notifications, project links, settings and the command palette.
+More screens in [`docs/screenshots/`](docs/screenshots): team access, notifications, project links, settings and the command palette.
 
 ## How it works
 

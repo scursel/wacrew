@@ -287,7 +287,7 @@ Três camadas mantêm o projeto em dia:
   manda resumo no self-chat do operador. Config em `radar.config.json`: `upstreamAtivo`
   (default true) e `upstreamIntervaloH` (default 24). Estado em `.radar-status.json` → `upstream`.
 
-## Escritório 2D (`/escritorio`) e Ponte Orca
+## Escritório 2D (`/escritorio`)
 
 `/escritorio` (`web/app/(painel)/escritorio/`) exibe os projetos/clientes num escritório pixel-art
 multi-salas (`50×36` tiles, 28 baias fixas `chair-ws-1..28`, layout default gerado por
@@ -301,31 +301,3 @@ e em modo Organograma:
   `LEADER_ID = -1` é a Recepção fixa.
 - **Contatos e DMs por projeto:** `web/lib/escritorio-estado.ts` agrega participantes do grupo +
   contatos vinculados em `links.json` e cruza com chats `dm-*`.
-- **Ponte Orca (`web/lib/orca-bridge.ts`, `/api/escritorio/orca`):** na gaveta do cliente, a aba
-  **Agente Orca** mostra os terminais/agentes abertos naquele repositório no Orca (`onorca.dev`),
-  lê a tela TUI ao vivo e envia prompts. Localmente chama a CLI do Orca direto (`ORCA_CLI_COMMAND`,
-  `ORCA_CLI_BIN_DIR/orca`, `~/.local/bin/orca` ou o binário dentro do `Orca.app`); na nuvem
-  (Railway) a rota lê o snapshot sincronizado em `DATA_DIR/.orca-remote-state.json` e enfileira os
-  comandos em `.orca-remote-queue.json` para o Mac executar.
-  - **Relay (Mac → nuvem):** `web/lib/orca-relay.ts` roda dentro do MCP enquanto há sessão aberta
-    e, de forma permanente, no daemon `scripts/orca-bridge-daemon.ts` (`npm run orca-bridge`, ou
-    `pm2 start ecosystem.config.cjs --only wa-orca-bridge`). O daemon alimenta o coletor
-    principal (`WAC_CLOUD_*`) e, se o trio `WAC_PESSOAL_*` existir, o pessoal também. Lock em
-    tmpdir **por destino** (`wac-orca-relay-<hash da URL>.lock`): o MCP do pessoal nunca
-    disputa com o do business; o lock só é renovado em ciclo que deu certo, então um dono
-    travado perde a vez em 12 s. Sem daemon nem MCP, a nuvem congela num snapshot velho: o
-    pill da barra fica amarelo (> 60 s) e o painel de status avisa.
-    A vez vem antes da CLI: só o processo que segura o lock lê o Orca, e só com o app do Orca
-    aberto (`orcaAppAberto`, um `ps` com cache de 5 s). Cada chamada da CLI sobe o Electron
-    inteiro; com o snapshot lido antes do lock, cada MCP aberto (dois por sessão) chamava a
-    CLI a cada passada. `WAC_ORCA_RELAY=0` desliga a ponte no processo.
-  - **Painel de status:** o pill `🐋 Orca` da barra superior é um botão sempre visível (verde =
-    local ou remoto fresco, amarelo = remoto parado, cinza = offline) que abre `OrcaStatusPanel`:
-    fonte, host de origem, runtime, versão, idade do snapshot, contadores, hosts, ambientes
-    pareados (remover) e "Parear outro Orca" (`environment add`; o pairing code vai só pra CLI,
-    nunca pra disco — na nuvem fica em memória até o relay buscar).
-  - **Mapa chat → repo:** `DATA_DIR/orca-repos.json` (`{ "<slug>": ["pasta1", "pasta2"] }`,
-    `web/lib/orca-repos.ts`, semente `ORCA_REPOS_PADRAO`). A gaveta vincula/desvincula pelo
-    `<select>` de worktrees (ações `vincular_repo`/`desvincular_repo`). A fonte da verdade é o
-    Mac: a nuvem enfileira a edição e recebe o mapa atualizado no próximo `sync_push`.
-  - **Rota:** `GET ?info=1` devolve `ageMs` e `relayOk` junto do snapshot.

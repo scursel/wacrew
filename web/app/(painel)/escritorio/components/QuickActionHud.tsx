@@ -9,8 +9,6 @@ interface QuickActionHudProps {
   palette: number;
   baiaIndex: number;
   onWalkTo: () => void;
-  onOpenDrawer: () => void;
-  onOpenOrca?: () => void;
   onClose: () => void;
 }
 
@@ -19,8 +17,6 @@ export function QuickActionHud({
   palette,
   baiaIndex,
   onWalkTo,
-  onOpenDrawer,
-  onOpenOrca,
   onClose,
 }: QuickActionHudProps) {
   const [copiado, setCopiado] = useState(false);
@@ -178,32 +174,6 @@ export function QuickActionHud({
         >
           <span aria-hidden="true">🚶</span>
           <span className="hidden lg:inline">Ir à Mesa</span>
-        </button>
-
-        {/* Abrir Agente Orca */}
-        {onOpenOrca && (
-          <button
-            type="button"
-            onClick={onOpenOrca}
-            aria-label={`Abrir agente Orca de ${cliente.nome}`}
-            title="Abrir chat e terminal do Agente Orca deste projeto"
-            className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-emerald-500/50 bg-emerald-500/20 px-2.5 text-[11px] font-semibold text-emerald-200 transition-colors hover:bg-emerald-500/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-[0.98] sm:text-xs"
-          >
-            <span aria-hidden="true">🐋</span>
-            <span>Agente Orca</span>
-          </button>
-        )}
-
-        {/* Abrir Ficha Completa */}
-        <button
-          type="button"
-          onClick={onOpenDrawer}
-          aria-label={`Abrir ficha lateral de ${cliente.nome}`}
-          title="Abrir ficha e conversas completas na lateral"
-          className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-blue-500/45 bg-blue-500/20 px-2.5 text-[11px] font-semibold text-blue-200 transition-colors hover:bg-blue-500/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 active:scale-[0.98] sm:text-xs"
-        >
-          <span aria-hidden="true">📖</span>
-          <span>Ficha</span>
         </button>
 
         {/* Fechar HUD */}

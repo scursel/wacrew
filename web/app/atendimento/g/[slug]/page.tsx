@@ -6,6 +6,7 @@ import { irmaosLiberados } from "@/lib/equipe/acesso";
 import { janelaDaConversa, totalDaConversa } from "@/lib/equipe/conversa";
 import { listaDaPagina, paginaDoAtendente } from "@/lib/equipe/pagina";
 import { dadosDoPainel } from "@/lib/painel-cliente";
+import { ultimoAtendimento } from "@/lib/ultimo-atendimento";
 
 export const dynamic = "force-dynamic";
 
@@ -26,9 +27,10 @@ export default async function AtendimentoChat({ params }: { params: Promise<{ sl
   const canonico = p.canonicoDe(slug);
   const item = lista?.find((x) => x.slug === canonico);
   const groupName = item?.name ?? fallback;
+  const registros = fundirMensagens(listas);
   const painel = await dadosDoPainel(
-    { slug, nome: groupName, avatarPath: item?.avatarPath ?? null, registros: fundirMensagens(listas) },
+    { slug, nome: groupName, avatarPath: item?.avatarPath ?? null, registros },
     null,
   );
-  return <GroupWorkspace key={slug} slug={slug} groupName={groupName} messages={messages} total={total} painel={painel} agora={Date.now()} />;
+  return <GroupWorkspace key={slug} slug={slug} groupName={groupName} messages={messages} ultimoAtendimento={await ultimoAtendimento(irmaos, undefined, registros)} total={total} painel={painel} agora={Date.now()} />;
 }

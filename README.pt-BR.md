@@ -64,11 +64,11 @@ Chatbot não resolve. Resposta pronta tem cara de robô, o cliente sente e a rel
 
 | | |
 |---|---|
-| ![Tela Hoje: quem está esperando, o que a IA está fazendo, sinais e agenda do dia](docs/screenshots/hoje.webp) **Hoje.** Quem espera e há quanto tempo, o que a IA está fazendo, sinais e a agenda do dia. | ![Escritório 2D em pixel art com uma mesa por projeto de cliente](docs/screenshots/escritorio.webp) **Escritório 2D.** Uma mesa por projeto. Chegou mensagem, a mesa fica vermelha na hora, com som. |
+| **Caixa de entrada.** Leia e responda às mensagens dos clientes, com assistência de IA por conversa. | ![Tela Hoje: quem está esperando, o que a IA está fazendo, sinais e agenda do dia](docs/screenshots/hoje.webp) **Hoje.** Quem espera e há quanto tempo, o que a IA está fazendo, sinais e a agenda do dia. |
 | ![Painel com volume de mensagens, tempo de primeira resposta e quem respondeu](docs/screenshots/dashboard.webp) **Painel.** Volume, tempo de primeira resposta, quem respondeu, clientes mais ativos e entregas por mês. | ![Quadro de clientes com tempo de espera, etiquetas e última mensagem](docs/screenshots/clientes-quadro.webp) **Clientes.** Tabela e quadro, com contrato, entregas e tempo de espera de cada cliente. |
-| ![Ficha do cliente com o agente de código rodando no repositório do projeto](docs/screenshots/ficha-agente-orca.webp) **Ponte com o agente (opcional).** Se você usa o [Orca](https://onorca.dev), a ficha do cliente mostra o agente de código trabalhando no repositório daquele projeto e deixa você mandar comandos para ele. | ![Semana do Google Agenda dentro do painel](docs/screenshots/agenda.webp) **Agenda.** O seu Google Agenda dentro do painel, editável por você ou pela IA. |
+| **Escritório 2D.** Uma mesa por projeto. Chegou mensagem, a mesa fica vermelha na hora, com som. | ![Semana do Google Agenda dentro do painel](docs/screenshots/agenda.webp) **Agenda.** O seu Google Agenda dentro do painel, editável por você ou pela IA. |
 
-Mais telas em [`docs/screenshots/`](docs/screenshots): organograma, acesso da equipe, notificações, links de projeto, configurações e a paleta de comandos.
+Mais telas em [`docs/screenshots/`](docs/screenshots): acesso da equipe, notificações, links de projeto, configurações e a paleta de comandos.
 
 ## Como funciona
 

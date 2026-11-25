@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { atendenteDoPedido, exigirChat, irmaosLiberados, respostaDeErro } from "@/lib/equipe/acesso";
 import { janelaDaConversa } from "@/lib/equipe/conversa";
+import { ultimoAtendimento } from "@/lib/ultimo-atendimento";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,7 +22,13 @@ export async function GET(req: Request) {
     const pedido = Number(url.searchParams.get("limit"));
     const limit = Number.isFinite(pedido) && pedido > 0 ? Math.min(pedido, LIMITE_MAX) : LIMITE_PADRAO;
     // DM partida em telefone × LID: os irmãos liberados entram fundidos na mesma janela.
-    return NextResponse.json(await janelaDaConversa(await irmaosLiberados(a, slug), { limit, before }));
+    const slugs = await irmaosLiberados(a, slug);
+    const mensagens = janelaDaConversa(slugs, { limit, before });
+    if (!before && url.searchParams.get("ultimoAtendimento") === "1") {
+      const [messages, atendimento] = await Promise.all([mensagens, ultimoAtendimento(slugs)]);
+      return NextResponse.json({ messages, ultimoAtendimento: atendimento });
+    }
+    return NextResponse.json(await mensagens);
   } catch (e) {
     return respostaDeErro(e);
   }

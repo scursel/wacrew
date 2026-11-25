@@ -17,6 +17,12 @@ export interface MsgAlvo {
   fromMe?: boolean;
 }
 
+interface ConsultaMensagens {
+  before?: string;
+  limit?: number;
+  incluirUltimoAtendimento?: boolean;
+}
+
 export interface RotasPainel {
   modo: ModoPainel;
   inicio: string;
@@ -26,7 +32,7 @@ export interface RotasPainel {
   fila: string;
   chat(slug: string): string;
   status: string;
-  mensagens(slug: string, q?: { before?: string; limit?: number }): string;
+  mensagens(slug: string, q?: ConsultaMensagens): string;
   presenca(slug: string): string;
   midia(mediaPath: string): string;
   transcrever(slug: string, mediaPath: string): Pedido;
@@ -43,10 +49,11 @@ export interface RotasPainel {
 const enc = encodeURIComponent;
 const caminho = (p: string) => p.split('/').map(enc).join('/');
 
-function consulta(slug: string, q?: { before?: string; limit?: number }): string {
+function consulta(slug: string, q?: ConsultaMensagens): string {
   let s = `slug=${enc(slug)}`;
   if (q?.before) s += `&before=${enc(q.before)}`;
   if (q?.limit) s += `&limit=${q.limit}`;
+  if (q?.incluirUltimoAtendimento) s += '&ultimoAtendimento=1';
   return s;
 }
 

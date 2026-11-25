@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ClienteEscritorio, DmDisponivelEscritorio } from '@/lib/escritorio-estado';
 import { FreioPorChat, interpretarEventoMensagem } from '@/lib/escritorio-notificacao';
-import type { OrcaSnapshot } from '@/lib/orca-bridge';
 import type { PresenceView } from '@/lib/presence';
 import { AMBIENT_STATIONS, type AmbientStation, getAmbientMusic } from './ambientMusic';
 import { AgentLabels, type AgentLabelMeta } from './components/AgentLabels';
@@ -12,12 +11,6 @@ import { AreaLabelsOverlay } from './components/AreaLabelsOverlay';
 import { CenaLoaderEscritorio } from './components/CenaLoaderEscritorio';
 import { CharSprite } from './components/CharSprite';
 import { ChatBubblesOverlay, type ChatBubbleInfo } from './components/ChatBubblesOverlay';
-import {
-  idadeSnapshotMs,
-  OrcaStatusPanel,
-  type OrcaStatusInfo,
-  tomStatusOrca,
-} from './components/OrcaStatusPanel';
 import { OrganogramaClientesView } from './components/OrganogramaClientesView';
 import { PainelClienteEscritorio } from './components/PainelClienteEscritorio';
 import { PlayerAvatarModal } from './components/PlayerAvatarModal';
@@ -116,10 +109,6 @@ export function EscritorioView({
   const [somAtivo, setSomAtivo] = useState(false);
   const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null);
   const [canalDrawerSelecionado, setCanalDrawerSelecionado] = useState<string | null>(null);
-  const [abaDrawerInicial, setAbaDrawerInicial] = useState<'whatsapp' | 'orca'>('whatsapp');
-  const [orcaSnapshot, setOrcaSnapshot] = useState<OrcaSnapshot | null>(null);
-  const [orcaInfo, setOrcaInfo] = useState<OrcaStatusInfo | null>(null);
-  const [mostrarOrcaStatus, setMostrarOrcaStatus] = useState(false);
   const [expandedProjetos, setExpandedProjetos] = useState<Record<string, boolean>>({});
   const [expandirTodosContatos, setExpandirTodosContatos] = useState(false);
 
@@ -269,44 +258,16 @@ export function EscritorioView({
     [],
   );
 
-  // Estável: o popover registra listeners de teclado/clique a partir dele.
-  const fecharOrcaStatus = useCallback(() => setMostrarOrcaStatus(false), []);
-
-  const refreshOrca = useCallback(async () => {
-    try {
-      const res = await fetch('/api/escritorio/orca?info=1', { cache: 'no-store' });
-      if (!res.ok) return;
-      const data = (await res.json()) as {
-        snapshot?: OrcaSnapshot;
-        ageMs?: number;
-        relayOk?: boolean;
-      };
-      if (data?.snapshot) {
-        setOrcaSnapshot(data.snapshot);
-        setOrcaInfo({
-          ageMs: typeof data.ageMs === 'number' ? data.ageMs : 0,
-          relayOk: Boolean(data.relayOk),
-          recebidoEm: Date.now(),
-        });
-      }
-    } catch {
-      // mantém último snapshot
-    }
-  }, []);
-
   useEffect(() => {
     // Se a página abriu com cache frio (0 clientes iniciais) ou sem lista de DMs, busca imediatamente
     if (clientesIniciais.length === 0 || dmsDisponiveis.length === 0) {
       void refreshEstado(true);
     }
-    void refreshOrca();
     const timer = setInterval(() => void refreshEstado(false), 6000);
-    const orcaTimer = setInterval(refreshOrca, 6000);
     return () => {
       clearInterval(timer);
-      clearInterval(orcaTimer);
     };
-  }, [clientesIniciais.length, dmsDisponiveis.length, refreshEstado, refreshOrca]);
+  }, [clientesIniciais.length, dmsDisponiveis.length, refreshEstado]);
 
   // Assinatura SSE em tempo real (/api/events) para atualizar instantaneamente quando chegar mensagem ou presença no WhatsApp
   useEffect(() => {
@@ -667,18 +628,7 @@ export function EscritorioView({
         urgente: isDanger,
       };
 
-      const orcaProj = orcaSnapshot?.bySlug?.[c.slug];
-      const orcaWorkingAgent = orcaProj?.agents.find((a) => a.state === 'working');
-
-      if (orcaWorkingAgent) {
-        tools[id] = [
-          {
-            toolId: `orca-${c.slug}`,
-            status: `🐋 ${orcaWorkingAgent.agentType}: ${orcaWorkingAgent.toolName || 'Codando no Orca…'}`,
-            done: false,
-          },
-        ];
-      } else if (isTyping) {
+      if (isTyping) {
         tools[id] = [
           {
             toolId: `pres-${c.slug}`,
@@ -701,12 +651,9 @@ export function EscritorioView({
         tools[id] = [
           {
             toolId: `ok-${c.slug}`,
-            status:
-              orcaProj && orcaProj.liveTerminalCount > 0
-                ? `🐋 ${orcaProj.repoLabel} · ${orcaProj.liveTerminalCount} term ativo`
-                : c.msgsCliente30d > 0
-                  ? `Baia #${baiaIndex} · Em dev (${c.msgsCliente30d} msgs/30d)`
-                  : `Baia #${baiaIndex} · Em dev`,
+            status: c.msgsCliente30d > 0
+              ? `Baia #${baiaIndex} · Em dev (${c.msgsCliente30d} msgs/30d)`
+              : `Baia #${baiaIndex} · Em dev`,
             done: true,
           },
         ];
@@ -727,7 +674,7 @@ export function EscritorioView({
       agentTools: tools,
       idToCliente: byId,
     };
-  }, [clientesVisiveis, clientesPausados, presencas, orcaSnapshot, getIdForSlug]);
+  }, [clientesVisiveis, clientesPausados, presencas, getIdForSlug]);
 
   // Aplica adições/remoções e mantém TODOS os NPCs sentados em suas respectivas mesas!
   useEffect(() => {
@@ -1328,7 +1275,7 @@ export function EscritorioView({
             </button>
           </div>
 
-          {/* 4. Indicadores de Capacidade & Orca */}
+          {/* Capacidade das mesas */}
           <span
             className="hidden h-8 items-center gap-1.5 rounded-lg border border-line bg-elevated px-2.5 text-[11px] font-medium tabular-nums text-fg 2xl:inline-flex"
             title="Capacidade das baias individuais no escritório"
@@ -1337,51 +1284,6 @@ export function EscritorioView({
             <strong className="font-mono text-fg">{contadores.mesasOcupadas}</strong>/
             {TOTAL_MESAS_ESCRITORIO} mesas
           </span>
-
-          {(() => {
-            const tom = tomStatusOrca(orcaSnapshot, idadeSnapshotMs(orcaInfo));
-            const classeTom =
-              tom === 'ok'
-                ? 'border-ok/40 bg-ok-bg text-ok'
-                : tom === 'warn'
-                  ? 'border-warn/40 bg-warn-bg text-warn'
-                  : 'border-line bg-elevated text-fg-dim';
-            const titulo =
-              tom === 'off'
-                ? 'Orca offline: sem CLI local nem snapshot sincronizado. Clique para detalhes.'
-                : tom === 'warn'
-                  ? 'Snapshot remoto do Orca parado há mais de 1 min. Clique para detalhes.'
-                  : `Conectado ao Orca (${orcaSnapshot?.source === 'local-cli' ? 'CLI local' : `remoto via ${orcaSnapshot?.hostLabel ?? 'Mac'}`}) · ${orcaSnapshot?.allWorktreesCount ?? 0} worktrees. Clique para detalhes.`;
-            return (
-              <div className="relative hidden xl:block">
-                <button
-                  type="button"
-                  data-orca-status-trigger
-                  aria-expanded={mostrarOrcaStatus}
-                  aria-haspopup="dialog"
-                  onClick={() => setMostrarOrcaStatus((v) => !v)}
-                  title={titulo}
-                  className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-[11px] font-semibold tabular-nums transition-all hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${classeTom}`}
-                >
-                  <span aria-hidden="true">🐋</span>
-                  <span>Orca</span>
-                  {tom === 'off' ? (
-                    <span>offline</span>
-                  ) : (
-                    <strong className="font-mono">{orcaSnapshot?.activeAgentsCount ?? 0} ativos</strong>
-                  )}
-                </button>
-                {mostrarOrcaStatus && (
-                  <OrcaStatusPanel
-                    snapshot={orcaSnapshot}
-                    info={orcaInfo}
-                    onClose={fecharOrcaStatus}
-                    onRefresh={refreshOrca}
-                  />
-                )}
-              </div>
-            );
-          })()}
         </div>
 
         {/* Zona Direita: Busca + Camadas do Mapa + Ambiente/Áudio + Ações */}
@@ -1729,7 +1631,6 @@ export function EscritorioView({
                         handleSelectAgent(null);
                         setCanalDrawerSelecionado(null);
                       } else {
-                        setAbaDrawerInicial('whatsapp');
                         handleSelectAgent(id);
                         setCanalDrawerSelecionado(null);
                         setExpandedProjetos((prev) => ({ ...prev, [c.slug]: true }));
@@ -1805,51 +1706,6 @@ export function EscritorioView({
                                 </span>
                               )}
                             </div>
-
-                            {(() => {
-                              const orcaProj = orcaSnapshot?.bySlug?.[c.slug];
-                              if (!orcaProj || orcaProj.liveTerminalCount === 0) return null;
-                              const ag = orcaProj.agents[0];
-                              const working = orcaProj.status === 'working';
-                              const monitoring = orcaProj.status === 'monitoring';
-                              return (
-                                <div className="mt-1 flex items-center gap-1">
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setAbaDrawerInicial('orca');
-                                      handleSelectAgent(id);
-                                      if (
-                                        typeof window !== 'undefined' &&
-                                        window.innerWidth < 768
-                                      ) {
-                                        setMostrarRoster(false);
-                                      }
-                                    }}
-                                    title="Abrir chat e terminal deste agente no Orca"
-                                    className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${
-                                      working
-                                        ? 'border-ok/40 bg-ok-bg text-ok'
-                                        : monitoring
-                                          ? 'border-accent-line bg-accent-soft text-info'
-                                          : 'border-line-2 bg-elevated text-fg-dim hover:text-fg'
-                                    }`}
-                                  >
-                                    <span aria-hidden="true">🐋</span>
-                                    <span className="uppercase">{ag?.agentType ?? 'orca'}</span>
-                                    <span aria-hidden="true">·</span>
-                                    <span>
-                                      {working
-                                        ? `⚡ ${ag?.toolName || 'Codando'}`
-                                        : monitoring
-                                          ? '👁️ Plantão'
-                                          : `${orcaProj.liveTerminalCount} term`}
-                                    </span>
-                                  </button>
-                                </div>
-                              );
-                            })()}
                           </div>
 
                           {contatos.length > 0 && (
@@ -2180,12 +2036,6 @@ export function EscritorioView({
                       palette={selectedEntry.palette}
                       baiaIndex={selectedEntry.baiaIndex}
                       onWalkTo={() => handleWalkToAgent(selectedAgentId)}
-                      onOpenDrawer={() => {
-                        setAbaDrawerInicial('whatsapp');
-                      }}
-                      onOpenOrca={() => {
-                        setAbaDrawerInicial('orca');
-                      }}
                       onClose={() => handleSelectAgent(null)}
                     />
                   )}
@@ -2364,11 +2214,6 @@ export function EscritorioView({
             canalSelecionado={canalDrawerSelecionado}
             onSelectCanal={setCanalDrawerSelecionado}
             dmsDisponiveis={dmsDisponiveis}
-            orcaInfo={orcaSnapshot?.bySlug?.[selectedEntry.cliente.slug] ?? null}
-            orcaAvailable={Boolean(orcaSnapshot?.available)}
-            orcaWorktrees={orcaSnapshot?.allWorktrees ?? []}
-            onRefreshOrca={refreshOrca}
-            abaInicial={abaDrawerInicial}
             onClose={() => {
               handleSelectAgent(null);
               setCanalDrawerSelecionado(null);

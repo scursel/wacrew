@@ -26,9 +26,9 @@ e o que foi entregue.
 
 ## Positioning
 
-Não é um CRM genérico nem um WhatsApp Web com outra pele: é a mesa de operação de uma pessoa que
-vende e entrega software pelo WhatsApp, com o histórico completo na nuvem, IA que escreve na voz
-dele e com ritmo humano, e equipe com acesso recortado por chat.
+Central de atendimento ao cliente pelo WhatsApp. Operadores e atendentes podem ler, organizar e
+responder às conversas. A equipe pode habilitar a IA em cada conversa para resumir o histórico e
+preparar rascunhos, com acesso da equipe recortado por chat.
 
 ## Operating Context
 
