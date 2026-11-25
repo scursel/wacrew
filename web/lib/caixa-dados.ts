@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { cache } from 'react';
 import {
   type AguardandoOk,
+  type AtribuicaoFila,
   type ConversaFila,
   type DadosFila,
   type EntregaViva,
@@ -14,6 +15,9 @@ import { type GroupSummary, listGroups } from './data';
 import { listarDespachos } from './despacho-store';
 import { buildInbox, type InboxItem } from './inbox';
 import { CONTROL_URL, DATA_DIR } from './paths';
+import { type Atribuicao, type Atribuicoes, DONO, lerAtribuicoes } from '@/lib/equipe/atribuicoes';
+import { type Departamento, departamentosDe, lerDepartamentos, lerNomeDono } from '@/lib/equipe/departamentos';
+import { lerUsuarios } from '@/lib/equipe/usuarios';
 
 /**
  * Dados da Caixa lidos no servidor (layout e rota). A parte pura mora em
@@ -27,14 +31,42 @@ export function paraEspera(i: InboxItem): EsperaFila {
   return { slug: i.slug, nome: i.groupName, motivo: i.reason, de: i.who, previa: i.preview, desde: i.waitingSince };
 }
 
-/**
- * Login de quem é dono da Caixa. Mesmo valor de `DONO` (a ser criado em `web/lib/equipe/atribuicoes.ts`):
- * quando a atribuição entrar, troque por esse import.
- */
-const DONO = '@dono';
+/** O que a atribuição precisa para virar nome na lista. Lido uma vez por fila. */
+export interface ContextoAtribuicao {
+  atribuicoes: Atribuicoes;
+  departamentos: Departamento[];
+  /** Nome do dono na assinatura e na lista ("Dono" quando o responsável é `@dono`). */
+  nomeDono: string;
+  /** Login → nome da conta. Sem conta (apagada), o login aparece no lugar do nome. */
+  nomeDe: ReadonlyMap<string, string>;
+}
 
-/** Os campos de atribuição ainda não vêm dos dados reais: a conversa fica sem departamento e sem responsável. */
-export function paraConversa(g: GroupSummary): ConversaFila {
+export async function contextoAtribuicao(): Promise<ContextoAtribuicao> {
+  const [atribuicoes, departamentos, nomeDono, usuarios] = await Promise.all([
+    lerAtribuicoes(),
+    lerDepartamentos(),
+    lerNomeDono(),
+    lerUsuarios(),
+  ]);
+  return { atribuicoes, departamentos, nomeDono, nomeDe: new Map(usuarios.map((u) => [u.login, u.nome])) };
+}
+
+/** A atribuição da conversa (chave = slug canônico) em nomes. Departamento apagado vira "nenhum". */
+export function atribuicaoDaConversa(chave: string, ctx: ContextoAtribuicao): AtribuicaoFila {
+  const a: Atribuicao | undefined = ctx.atribuicoes[chave];
+  const dep = a?.departamento ? ctx.departamentos.find((d) => d.id === a.departamento) : undefined;
+  const responsavel = a?.responsavel ?? null;
+  return {
+    departamento: dep?.id ?? null,
+    departamentoNome: dep?.nome ?? null,
+    departamentoSugerido: dep !== undefined && a?.origemDepartamento === 'ia',
+    responsavel,
+    responsavelNome: responsavel === null ? null : responsavel === DONO ? ctx.nomeDono : (ctx.nomeDe.get(responsavel) ?? responsavel),
+  };
+}
+
+/** `chave` é o slug canônico da conversa (na lista do dono, o próprio slug). */
+export function paraConversa(g: GroupSummary, ctx: ContextoAtribuicao, chave: string = g.slug): ConversaFila {
   return {
     slug: g.slug,
     nome: g.name,
@@ -46,11 +78,7 @@ export function paraConversa(g: GroupSummary): ConversaFila {
     silenciada: Boolean(g.muted),
     arquivada: Boolean(g.archived),
     etiquetas: g.etiquetas ?? [],
-    departamento: null,
-    departamentoNome: null,
-    departamentoSugerido: false,
-    responsavel: null,
-    responsavelNome: null,
+    ...atribuicaoDaConversa(chave, ctx),
   };
 }
 
@@ -101,15 +129,17 @@ async function perguntasPendentes(): Promise<AguardandoOk[]> {
 
 /** Fila do dono: quem espera, as conversas e o que a IA está fazendo. */
 export async function filaDoDono(): Promise<DadosFila> {
-  const [inbox, grupos, ia] = await Promise.all([buildInbox(), conversasDaRequisicao(), iaDaCaixa()]);
+  const [inbox, grupos, ia, ctx] = await Promise.all([buildInbox(), conversasDaRequisicao(), iaDaCaixa(), contextoAtribuicao()]);
   return {
     esperando: inbox.map(paraEspera),
-    conversas: grupos.map(paraConversa),
+    // A lista do dono não agrupa DM partida: cada conversa usa a própria atribuição (slug como está).
+    conversas: grupos.map((g) => paraConversa(g, ctx)),
     entregas: ia.entregas,
     aguardandoOk: ia.aguardandoOk,
     eu: DONO,
-    departamentos: [],
-    meusDepartamentos: [],
+    departamentos: ctx.departamentos.map(({ id, nome }) => ({ id, nome })),
+    // O dono escolhe qualquer departamento: todos são dele.
+    meusDepartamentos: ctx.departamentos.map((d) => d.id),
     geradoEm: Date.now(),
   };
 }
@@ -125,15 +155,16 @@ export async function filaDaEquipe(
   lista: GroupSummary[],
   eu: string,
 ): Promise<DadosFila> {
-  const inbox = await buildInbox({ slugs: chats, ignorarSilenciados: true, canonicoDe });
+  const [inbox, ctx] = await Promise.all([buildInbox({ slugs: chats, ignorarSilenciados: true, canonicoDe }), contextoAtribuicao()]);
   return {
     esperando: inbox.map(paraEspera),
-    conversas: lista.map(paraConversa),
+    // Atribuição no slug canônico: DM partida (telefone × LID) é uma conversa só.
+    conversas: lista.map((g) => paraConversa(g, ctx, canonicoDe(g.slug))),
     entregas: [],
     aguardandoOk: [],
     eu,
-    departamentos: [],
-    meusDepartamentos: [],
+    departamentos: ctx.departamentos.map(({ id, nome }) => ({ id, nome })),
+    meusDepartamentos: departamentosDe(ctx.departamentos, eu),
     geradoEm: Date.now(),
   };
 }

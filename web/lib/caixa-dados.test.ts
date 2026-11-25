@@ -2,8 +2,12 @@ import { appendFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { GroupSummary } from './data';
+import type { ContextoAtribuicao } from './caixa-dados';
 
 // O registro de entregas e o despacho moram em DATA_DIR (resolvido no import de ./paths).
+// `DONO` é o de `@/lib/equipe/atribuicoes`; não importo aqui porque esse módulo também lê DATA_DIR no import.
+const DONO = '@dono';
 let tmp: string;
 let mod: typeof import('./caixa-dados');
 
@@ -78,5 +82,113 @@ describe('iaDaCaixa', () => {
       entregas: [],
       aguardandoOk: [{ slug: 'g', n: 3, texto: 'Fecha sexta?', desde: criadoEm }],
     });
+  });
+});
+
+const grupo = (slug: string, name = slug): GroupSummary => ({
+  slug,
+  name,
+  messageCount: 0,
+  lastTimestamp: null,
+  avatarPath: null,
+  lastPreview: null,
+  unread: 0,
+});
+
+const ATRIBUICAO_IA = { departamento: 'suporte', origemDepartamento: 'ia', responsavel: 'ana', desde: '2026-11-25T10:00:00.000Z' } as const;
+const DEPARTAMENTOS = [
+  { id: 'suporte', nome: 'Suporte', descricao: '', membros: ['ana'] },
+  { id: 'financeiro', nome: 'Financeiro', descricao: '', membros: ['bia'] },
+];
+
+describe('paraConversa: atribuição em nomes', () => {
+  const ctx: ContextoAtribuicao = {
+    atribuicoes: {
+      'grupo-a': ATRIBUICAO_IA,
+      'grupo-b': { departamento: 'financeiro', origemDepartamento: 'manual', responsavel: DONO, desde: '2026-11-25T10:00:00.000Z' },
+      'grupo-c': { departamento: 'apagado', origemDepartamento: 'ia', responsavel: 'sumiu', desde: '2026-11-25T10:00:00.000Z' },
+    },
+    departamentos: DEPARTAMENTOS,
+    nomeDono: 'Operador',
+    nomeDe: new Map([['ana', 'Ana Souza']]),
+  };
+
+  it('atribuição da IA sai com o nome da conta, o nome do departamento e a sugestão', () => {
+    expect(mod.paraConversa(grupo('grupo-a', 'Grupo A'), ctx)).toMatchObject({
+      slug: 'grupo-a',
+      nome: 'Grupo A',
+      responsavel: 'ana',
+      responsavelNome: 'Ana Souza',
+      departamento: 'suporte',
+      departamentoNome: 'Suporte',
+      departamentoSugerido: true,
+    });
+  });
+
+  it('dono responsável sai com o nome do dono; escolha manual não é sugestão', () => {
+    expect(mod.paraConversa(grupo('grupo-b'), ctx)).toMatchObject({
+      responsavel: DONO,
+      responsavelNome: 'Operador',
+      departamentoNome: 'Financeiro',
+      departamentoSugerido: false,
+    });
+  });
+
+  it('departamento apagado vira nenhum; responsável sem conta aparece pelo login', () => {
+    expect(mod.paraConversa(grupo('grupo-c'), ctx)).toMatchObject({
+      departamento: null,
+      departamentoNome: null,
+      departamentoSugerido: false,
+      responsavel: 'sumiu',
+      responsavelNome: 'sumiu',
+    });
+  });
+
+  it('sem atribuição, tudo vazio; a chave é o slug canônico (DM partida usa a atribuição do irmão)', () => {
+    expect(mod.paraConversa(grupo('grupo-x'), ctx)).toMatchObject({
+      departamento: null,
+      departamentoNome: null,
+      departamentoSugerido: false,
+      responsavel: null,
+      responsavelNome: null,
+    });
+    expect(mod.paraConversa(grupo('dm-lid'), ctx, 'grupo-a')).toMatchObject({ slug: 'dm-lid', responsavelNome: 'Ana Souza' });
+  });
+});
+
+describe('fila com as atribuições gravadas em .equipe', () => {
+  const eq = () => join(tmp, 'data', '.equipe');
+
+  it('filaDaEquipe: nomes das contas, departamentos da pessoa e a atribuição no slug canônico', async () => {
+    await mkdir(eq(), { recursive: true });
+    await writeFile(
+      join(eq(), 'usuarios.json'),
+      JSON.stringify([{ login: 'ana', nome: 'Ana Souza', senha: 'scrypt$x$y', ativo: true, versao: 1, chats: [], criadoEm: '2026-10-06T12:00:00.000Z', ultimoAcesso: null }]),
+    );
+    await writeFile(join(eq(), 'departamentos.json'), JSON.stringify(DEPARTAMENTOS));
+    await writeFile(join(eq(), 'atribuicoes.json'), JSON.stringify({ 'dm-tel': ATRIBUICAO_IA }));
+    const canonicoDe = (slug: string) => (slug === 'dm-lid' ? 'dm-tel' : slug);
+
+    const f = await mod.filaDaEquipe(new Set(), canonicoDe, [grupo('dm-tel'), grupo('dm-lid')], 'ana');
+
+    expect(f.eu).toBe('ana');
+    expect(f.departamentos).toEqual([
+      { id: 'suporte', nome: 'Suporte' },
+      { id: 'financeiro', nome: 'Financeiro' },
+    ]);
+    expect(f.meusDepartamentos).toEqual(['suporte']);
+    expect(f.conversas.map((c) => [c.slug, c.responsavelNome, c.departamentoNome, c.departamentoSugerido])).toEqual([
+      ['dm-tel', 'Ana Souza', 'Suporte', true],
+      ['dm-lid', 'Ana Souza', 'Suporte', true],
+    ]);
+  });
+
+  it('filaDoDono: eu é o dono e os departamentos são todos dele', async () => {
+    await mkdir(eq(), { recursive: true });
+    await writeFile(join(eq(), 'departamentos.json'), JSON.stringify(DEPARTAMENTOS));
+    const f = await mod.filaDoDono();
+    expect(f.eu).toBe(DONO);
+    expect(f.meusDepartamentos).toEqual(['suporte', 'financeiro']);
+    expect(f.departamentos).toHaveLength(2);
   });
 });
