@@ -7,13 +7,16 @@ import type { ContextoAtribuicao } from './caixa-dados';
 import { montarFila } from './caixa';
 
 // A espera vem do inbox e a classificação da IA; os dois são controlados pelo teste.
-const { buildInbox, classificarPendentes } = vi.hoisted(() => ({
+const { buildInbox, classificarPendentes, irmaos } = vi.hoisted(() => ({
+  // DM partida que o teste liga (lado → slug canônico); o resto é o próprio slug.
+  irmaos: new Map<string, string>(),
   buildInbox: vi.fn(async (_opts?: unknown): Promise<unknown[]> => []),
   // Nunca resolve: se a fila esperasse a IA, o teste travaria.
   classificarPendentes: vi.fn((_slugs: string[]): Promise<void> => new Promise(() => {})),
 }));
 vi.mock('./inbox', () => ({ buildInbox }));
 vi.mock('@/lib/equipe/classificar-departamento', () => ({ classificarPendentes }));
+vi.mock('@/lib/equipe/quem', () => ({ canonicoGlobal: async () => (slug: string) => irmaos.get(slug) ?? slug }));
 
 const esperaFake = (slug: string, groupName: string) => ({
   slug,
@@ -247,5 +250,24 @@ describe('classificação da IA e espera de DM partida', () => {
     expect(linhaDaEspera).toMatchObject({ responsavel: 'ana', responsavelNome: 'Ana Souza', departamentoNome: 'Suporte', departamentoSugerido: true });
     // Com responsável, a espera sai da Fila.
     expect(montarFila(f, { vista: 'fila' }).ordem).toEqual([]);
+  });
+
+  it('filaDoDono: lado LID da DM partida mostra a atribuição gravada no telefone e classifica pelo canônico', async () => {
+    await mkdir(eq(), { recursive: true });
+    await writeFile(
+      join(eq(), 'usuarios.json'),
+      JSON.stringify([{ login: 'ana', nome: 'Ana Souza', senha: 'scrypt$x$y', ativo: true, versao: 1, chats: [], criadoEm: '2026-10-06T12:00:00.000Z', ultimoAcesso: null }]),
+    );
+    await writeFile(join(eq(), 'departamentos.json'), JSON.stringify(DEPARTAMENTOS));
+    await writeFile(join(eq(), 'atribuicoes.json'), JSON.stringify({ 'dm-tel': ATRIBUICAO_IA }));
+    irmaos.set('dm-lid', 'dm-tel');
+    buildInbox.mockResolvedValueOnce([esperaFake('dm-lid', 'Carla')]);
+
+    const f = await mod.filaDoDono();
+    irmaos.clear();
+
+    const linha = montarFila(f, { vista: 'esperando' }).secoes[0]?.linhas.find((l) => l.slug === 'dm-lid');
+    expect(linha).toMatchObject({ responsavel: 'ana', departamentoNome: 'Suporte' });
+    expect(classificarPendentes).toHaveBeenLastCalledWith(['dm-tel']);
   });
 });

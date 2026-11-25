@@ -48,6 +48,12 @@ describe('identidade de atendimento', () => {
     await expect(quemAtendeDoPedido()).resolves.toEqual({ id: 'ana', nome: 'Ana', papel: 'atendente' });
   });
 
+  it('painel local sem PANEL_USER/PANEL_PASS é do dono, como no proxy', async () => {
+    vi.mocked(credenciaisDoDono).mockReturnValue(null);
+    vi.mocked(lerNomeDono).mockResolvedValue('Operador');
+    await expect(quemAtendeDoPedido()).resolves.toEqual({ id: '@dono', nome: 'Operador', papel: 'dono' });
+  });
+
   it('recusa sessão ausente ou inválida', async () => {
     vi.mocked(quemPelaSessao).mockResolvedValue(null);
     await expect(quemAtendeDoPedido()).rejects.toMatchObject({ status: 401 });

@@ -68,5 +68,5 @@ export function liberarLogin(login: string): Promise<void> {
   return serializar(async () => { const estado = await lerStrict(); for (const a of Object.values(estado)) if (a.responsavel === login) { a.responsavel = null; a.desde = null; } await writeJsonAtomic(arquivo(), estado); });
 }
 export function limparDepartamento(id: string): Promise<void> {
-  return serializar(async () => { const estado = await lerStrict(); for (const a of Object.values(estado)) if (a.departamento === id) { a.departamento = null; a.origemDepartamento = null; } await writeJsonAtomic(arquivo(), estado); });
+  return serializar(async () => { const estado = await lerStrict(); for (const a of Object.values(estado)) if (a.departamento === id) { a.departamento = null; a.origemDepartamento = null; delete a.iaTentouEm; } await writeJsonAtomic(arquivo(), estado); });
 }

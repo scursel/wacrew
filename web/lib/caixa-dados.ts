@@ -18,6 +18,7 @@ import { CONTROL_URL, DATA_DIR } from './paths';
 import { type Atribuicao, type Atribuicoes, DONO, lerAtribuicoes } from '@/lib/equipe/atribuicoes';
 import { classificarPendentes } from '@/lib/equipe/classificar-departamento';
 import { type Departamento, departamentosDe, lerDepartamentos, lerNomeDono } from '@/lib/equipe/departamentos';
+import { canonicoGlobal } from '@/lib/equipe/quem';
 import { lerUsuarios } from '@/lib/equipe/usuarios';
 
 /**
@@ -149,23 +150,38 @@ function conversaDeApoio(slug: string, nome: string, ctx: ContextoAtribuicao): C
 }
 
 /** A lista mais as esperas que não estão nela (ver `conversaDeApoio`). */
-function comEsperasSemConversa(conversas: ConversaFila[], inbox: InboxItem[], ctx: ContextoAtribuicao): ConversaFila[] {
+function comEsperasSemConversa(
+  conversas: ConversaFila[],
+  inbox: InboxItem[],
+  ctx: ContextoAtribuicao,
+  canonicoDe: (slug: string) => string = (s) => s,
+): ConversaFila[] {
   const listadas = new Set(conversas.map((c) => c.slug));
-  const apoio = inbox.filter((i) => !listadas.has(i.slug)).map((i) => conversaDeApoio(i.slug, i.groupName, ctx));
+  const apoio = inbox
+    .filter((i) => !listadas.has(i.slug))
+    .map((i) => ({ ...conversaDeApoio(i.slug, i.groupName, ctx), ...atribuicaoDaConversa(canonicoDe(i.slug), ctx) }));
   return apoio.length ? [...conversas, ...apoio] : conversas;
 }
 
 /** Fila do dono: quem espera, as conversas e o que a IA está fazendo. */
 export async function filaDoDono(): Promise<DadosFila> {
-  const [inbox, grupos, ia, ctx] = await Promise.all([buildInbox(), conversasDaRequisicao(), iaDaCaixa(), contextoAtribuicao()]);
-  const slugsEmEspera = inbox.map((i) => i.slug);
+  const [inbox, grupos, ia, ctx, canonicoDe] = await Promise.all([
+    buildInbox(),
+    conversasDaRequisicao(),
+    iaDaCaixa(),
+    contextoAtribuicao(),
+    canonicoGlobal(),
+  ]);
+  const slugsEmEspera = [...new Set(inbox.map((i) => canonicoDe(i.slug)))];
   const dados: DadosFila = {
     esperando: inbox.map(paraEspera),
-    // A lista do dono não agrupa DM partida: cada conversa usa a própria atribuição (slug como está).
+    // A lista do dono não agrupa DM partida, mas a atribuição mora no slug canônico (onde as rotas gravam):
+    // os dois lados mostram o mesmo responsável e departamento.
     conversas: comEsperasSemConversa(
-      grupos.map((g) => paraConversa(g, ctx)),
+      grupos.map((g) => paraConversa(g, ctx, canonicoDe(g.slug))),
       inbox,
       ctx,
+      canonicoDe,
     ),
     entregas: ia.entregas,
     aguardandoOk: ia.aguardandoOk,
@@ -200,6 +216,7 @@ export async function filaDaEquipe(
       lista.map((g) => paraConversa(g, ctx, canonicoDe(g.slug))),
       inbox,
       ctx,
+      canonicoDe,
     ),
     entregas: [],
     aguardandoOk: [],
@@ -223,7 +240,7 @@ export interface DadosAtribuicaoConversa {
   equipe: { id: string; nome: string }[];
 }
 
-/** `chave` é o slug canônico da conversa (no dono, o próprio slug). */
+/** `chave` é o slug canônico da conversa (`canonicoGlobal` no dono, `canonicoDe` na equipe). */
 export async function atribuicaoDaConversaAberta(chave: string, eu: string): Promise<DadosAtribuicaoConversa> {
   const [ctx, usuarios] = await Promise.all([contextoAtribuicao(), lerUsuarios()]);
   const contas = usuarios.filter((u) => u.ativo && u.login !== eu).map((u) => ({ id: u.login, nome: u.nome }));

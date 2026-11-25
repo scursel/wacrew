@@ -61,9 +61,13 @@ export const JANELA_REPETIDO_MS = 30 * 60_000;
 const CPS_ESTIMATIVA = 3;
 const PAUSA_ESTIMADA_S = 3;
 
-/** Compara balões ignorando caixa, espaços e pontuação final. */
+/** Primeira linha `*Nome:*` que o painel cola no envio (web/lib/equipe/assinatura.ts). */
+const ASSINATURA_PAINEL = /^\*[^*\n]{1,60}:\*\n?/;
+
+/** Compara balões ignorando assinatura do painel, caixa, espaços e pontuação final. */
 export function normalizarBalao(t: string): string {
   return t
+    .replace(ASSINATURA_PAINEL, '')
     .toLowerCase()
     .replace(/\s+/g, ' ')
     .trim()

@@ -38,6 +38,14 @@ describe("contextoDeEscrita", () => {
     expect(c.minhasRecentes).toEqual(["recente celular", "recente coletor"]);
   });
 
+  it("mensagem assinada pelo painel entra sem a linha *Nome:* (a revisão compara o texto cru)", () => {
+    const agora = new Date(Date.UTC(2026, 8, 14, 12, 5));
+    const msgs = [msg("eu", "*Ana:*\njá ajustei", T(10), { ator: "painel", usuario: "ana" } as Partial<MessageView>)];
+    const c = contextoDeEscrita(msgs, contatos, agora, BASELINE_PADRAO);
+    expect(c.ultimasMinhas).toEqual(["já ajustei"]);
+    expect(c.minhasRecentes).toEqual(["já ajustei"]);
+  });
+
   it("sem mensagens minhas: intervalo indefinido", () => {
     const c = contextoDeEscrita([msg("cliente", "oi", T(1))], contatos, new Date(), BASELINE_PADRAO);
     expect(c.ultimasMinhas).toEqual([]);

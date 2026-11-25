@@ -54,6 +54,11 @@ describe('fila-core — balão repetido e duração', () => {
     expect(r.descartados).toEqual(['Bom dia irmão!', 'vi o vídeo']);
   });
 
+  it('filtrarRepetidos ignora a assinatura *Nome:* do painel dos dois lados', () => {
+    expect(filtrarRepetidos(['oi'], ['*Ana:*\noi']).descartados).toEqual(['oi']);
+    expect(filtrarRepetidos(['*Bia:*\nok, combinado'], ['ok, combinado']).descartados).toEqual(['*Bia:*\nok, combinado']);
+  });
+
   it('filtrarRepetidos sem recentes mantém tudo', () => {
     expect(filtrarRepetidos(['a', 'b'], []).mantidos).toEqual(['a', 'b']);
   });

@@ -4,6 +4,8 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { AtribuicaoFila } from "@/lib/caixa";
 import type { UltimoAtendimento } from "@/lib/ultimo-atendimento";
+import type { RotasPainel } from "@/lib/rotas-painel";
+import { checarSessao, useRotas } from "../RotasPainel";
 import { Button, Icone, Select, cn } from "../ui";
 
 export interface AtribuicaoConversaProps {
@@ -23,12 +25,16 @@ const ROTA = "/api/atendimento/atribuicao";
 export type CorpoAtribuicao = { acao: "assumir" | "soltar" | "resolver" | "delegar" | "departamento"; para?: string; departamento?: string | null };
 
 /** Envia uma ação de atribuição. A rota também marca a conversa como resolvida quando a ação é "resolver". */
-export async function enviarAtribuicao(slug: string, corpo: CorpoAtribuicao): Promise<void> {
-  const res = await fetch(ROTA, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ slug, ...corpo }),
-  });
+export async function enviarAtribuicao(slug: string, corpo: CorpoAtribuicao, rotas: RotasPainel): Promise<void> {
+  // Sessão vencida (ou conta desativada) na área da equipe leva ao login, como as outras rotas da conversa.
+  const res = checarSessao(
+    await fetch(ROTA, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slug, ...corpo }),
+    }),
+    rotas,
+  );
   const data = (await res.json().catch(() => ({}))) as { ok?: boolean };
   if (!res.ok || !data.ok) throw new Error("falha");
 }
@@ -40,6 +46,7 @@ export async function enviarAtribuicao(slug: string, corpo: CorpoAtribuicao): Pr
  */
 export function AtribuicaoConversa({ slug, eu, inicial, departamentos, equipe, ultimoAtendimento }: AtribuicaoConversaProps) {
   const router = useRouter();
+  const rotas = useRotas();
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [delegando, setDelegando] = useState(false);
@@ -51,7 +58,7 @@ export function AtribuicaoConversa({ slug, eu, inicial, departamentos, equipe, u
     setOcupado(true);
     setErro(null);
     try {
-      await enviarAtribuicao(slug, corpo);
+      await enviarAtribuicao(slug, corpo, rotas);
       setDelegando(false);
       router.refresh();
     } catch {

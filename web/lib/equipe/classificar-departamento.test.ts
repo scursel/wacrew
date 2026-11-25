@@ -127,4 +127,26 @@ describe('classificarPendentes', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect((await atrib.lerAtribuicoes())['grupo-falhou']).toBeUndefined();
   });
+  it('duas montagens da fila ao mesmo tempo não classificam a mesma conversa duas vezes (nem além do 1º lote)', async () => {
+    vi.stubEnv('OPENROUTER_API_KEY', 'chave-teste');
+    let liberar: () => void = () => {};
+    const segura = new Promise<void>((r) => {
+      liberar = r;
+    });
+    const fetchMock = vi.fn(async () => {
+      await segura;
+      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ departamento: 'suporte' }) } }] }), { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    mock.msgs = [{ id: '4', timestamp: '2026-11-25T10:00:00.000Z', fromMe: false, sender: '5511999@s.whatsapp.net', senderName: 'Fulano', type: 'text', text: 'oi' }];
+    const slugs = ['lote-1', 'lote-2', 'lote-3', 'lote-4', 'lote-5'];
+
+    const a = mod.classificarPendentes(slugs);
+    const b = mod.classificarPendentes(slugs);
+    await new Promise((r) => setTimeout(r, 20));
+    liberar();
+    await Promise.all([a, b]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(slugs.length);
+  });
 });

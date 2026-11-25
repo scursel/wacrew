@@ -66,8 +66,8 @@ async function historicoDo(slug: string): Promise<LinhaHistorico[]> {
   return historicoDaConversa(msgs, c, N_HISTORICO);
 }
 
+/** `slug` já está em `emCurso` (marcado por `classificarPendentes`); sai dele no fim. */
 async function classificarUm(slug: string, deps: Departamento[], chave: string): Promise<void> {
-  emCurso.add(slug);
   try {
     const historico = await historicoDo(slug);
     if (!historico.length) {
@@ -110,6 +110,9 @@ export async function classificarPendentes(slugs: string[]): Promise<void> {
     if (falha !== undefined && Date.now() - falha < ESPERA_APOS_FALHA_MS) return false;
     return !emCurso.has(s) && !a?.departamento && !a?.iaTentouEm;
   });
+  // Marca o lote inteiro de uma vez (sem await entre o filtro e a marca): outra montagem da fila
+  // que chegue enquanto o 1º lote espera a IA não pega as mesmas conversas.
+  for (const s of fila) emCurso.add(s);
   for (let i = 0; i < fila.length; i += MAX_PARALELO) {
     await Promise.all(fila.slice(i, i + MAX_PARALELO).map((s) => classificarUm(s, deps, chave)));
   }

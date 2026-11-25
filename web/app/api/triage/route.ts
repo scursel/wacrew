@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
-import { readTriage, setAlert, setAutonomo, setCopilot, setLastSeen, setMuted, setNote, setResolved, setTypos, setEtiquetas, setAgente, setExecutor, setLatenciaMaxima, setSinalIgnorado } from "@/lib/triage";
-import { DONO, registrar } from "@/lib/equipe/atribuicoes";
-import { canonicoGlobal } from "@/lib/equipe/quem";
+import { readTriage, setAlert, setAutonomo, setCopilot, setLastSeen, setMuted, setNote, setTypos, setEtiquetas, setAgente, setExecutor, setLatenciaMaxima, setSinalIgnorado } from "@/lib/triage";
+import { resolverConversa } from "@/lib/equipe/resolver";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,11 +33,7 @@ export async function POST(req: Request) {
       if (typeof value !== "string") {
         return NextResponse.json({ error: "value deve ser string" }, { status: 400 });
       }
-      await setResolved(slug, value);
-      // Resolvido já foi gravado: falha ao soltar o responsável só loga.
-      await registrar((await canonicoGlobal())(slug), { tipo: "resolver", por: DONO }).catch((e) =>
-        console.error("[atribuição] não foi possível soltar o responsável", e),
-      );
+      await resolverConversa(slug, value);
       break;
     case "muted":
       if (typeof value !== "boolean") {

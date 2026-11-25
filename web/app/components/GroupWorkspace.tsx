@@ -120,13 +120,13 @@ export function GroupWorkspace({
     if (resolucao === "salvando") return;
     setResolucao("salvando");
     try {
-      await enviarAtribuicao(slug, { acao: "resolver" });
+      await enviarAtribuicao(slug, { acao: "resolver" }, rotas);
       setResolucao("feita");
       router.refresh();
     } catch {
       setResolucao("erro");
     }
-  }, [resolucao, slug, router]);
+  }, [resolucao, slug, router, rotas]);
 
   useEffect(() => {
     if (resolucao !== "feita" && resolucao !== "erro") return;

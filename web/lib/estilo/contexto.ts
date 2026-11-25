@@ -9,6 +9,7 @@ import type { Contacts } from "../contacts";
 import type { MessageView } from "../data";
 import type { Baseline } from "./baseline";
 import { BASELINE_PADRAO, calcularBaseline, elegivelParaBaseline } from "./baseline";
+import { semAssinatura } from "../equipe/assinatura";
 import type { EstadoConversa } from "./conversa";
 import { ehDoCliente, estadoDaConversa } from "./conversa";
 import { nomeDoOperador } from "./identidade";
@@ -30,8 +31,12 @@ const N_MINHAS = 5;
 const N_CLIENTE = 10;
 const TTL_MS = 60 * 60 * 1000;
 
+/** Texto sem a assinatura `*Nome:*` do painel: a revisão e a trava de repetição comparam o texto cru. */
 function textos(msgs: MessageView[]): MessageView[] {
-  return [...msgs].filter((m) => m.type === "text" && m.text?.trim() && !m.deleted).sort((a, b) => (a.timestamp < b.timestamp ? -1 : 1));
+  return [...msgs]
+    .filter((m) => m.type === "text" && m.text?.trim() && !m.deleted)
+    .map((m) => (m.fromMe && m.text ? { ...m, text: semAssinatura(m.text) } : m))
+    .sort((a, b) => (a.timestamp < b.timestamp ? -1 : 1));
 }
 
 export function contextoDeEscrita(msgs: MessageView[], contatos: Contacts, agora: Date, baseline: Baseline): ContextoEscrita {
@@ -56,7 +61,7 @@ const cache = new Map<string, { em: number; baseline: Baseline }>();
 export function baselineDoChat(slug: string, msgs: MessageView[], padrao: Baseline, agora: number = Date.now()): Baseline {
   const hit = cache.get(slug);
   if (hit && agora - hit.em < TTL_MS) return hit.baseline;
-  const elegiveis = msgs.filter((m) => elegivelParaBaseline(m)).map((m) => m.text);
+  const elegiveis = msgs.filter((m) => elegivelParaBaseline(m)).map((m) => semAssinatura(m.text ?? ""));
   const baseline = elegiveis.length >= MIN_MSGS_BASELINE ? calcularBaseline(elegiveis, "chat") : padrao;
   cache.set(slug, { em: agora, baseline });
   return baseline;

@@ -4,7 +4,6 @@ import { buildContacts, displayNameOf, roleOf } from './contacts';
 import { readContratos } from './contratos';
 import { explicarSinal, montarDashboard } from './dashboard';
 import type { MessageRecord } from './data';
-import { lerUsuarios } from './equipe/usuarios';
 import { listarFeatures } from './features';
 import type { TriageState } from './triage';
 
@@ -41,7 +40,7 @@ export async function dadosDoPainel(b: Base, triage: TriageState | null): Promis
 
   const agora = Date.now();
   const hoje = chaveDia(new Date(agora).toISOString());
-  const [contratos, features, usuarios] = await Promise.all([readContratos(), listarFeatures({ slug: b.slug }), lerUsuarios()]);
+  const [contratos, features] = await Promise.all([readContratos(), listarFeatures({ slug: b.slug })]);
   const contrato = contratos[b.slug] ?? null;
   const linha = montarDashboard(
     [{ slug: b.slug, nome: b.nome, mensagens: b.registros.map((r) => ({ timestamp: r.timestamp, fromMe: Boolean(r.fromMe) })) }],
@@ -65,7 +64,6 @@ export async function dadosDoPainel(b: Base, triage: TriageState | null): Promis
       entregas: { d30: linha?.features30d ?? 0, total: linha?.featuresTotal ?? features.length },
       mensagensCliente30d: linha?.msgsCliente30d ?? 0,
       limiteMensagens: contrato?.limiteMensagens ?? null,
-      equipe: usuarios.filter((u) => u.ativo && u.chats.includes(b.slug)).map((u) => ({ login: u.login, nome: u.nome })),
       autonomo: Boolean(triage.autonomo[b.slug]),
       silenciado: Boolean(triage.muted[b.slug]),
     },

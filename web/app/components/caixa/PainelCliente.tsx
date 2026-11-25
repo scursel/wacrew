@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { type MidiaResumo, type PainelCliente as Dados, type Tom, quandoCurto } from "@/lib/caixa";
 import { instanteLongo } from "@/lib/formatar-data";
@@ -295,27 +294,6 @@ export function PainelCliente({
           <Pares
             className="mt-4"
             itens={[
-              {
-                rotulo: "Equipe",
-                valor:
-                  dono.equipe.length > 0 ? (
-                    <span className="flex flex-col gap-1.5">
-                      {dono.equipe.map((u) => (
-                        <span key={u.login} className="flex items-center gap-2">
-                          <Avatar nome={u.nome} tipo="dm" tamanho="xs" />
-                          <span className="min-w-0 truncate">{u.nome} atende este chat</span>
-                        </span>
-                      ))}
-                    </span>
-                  ) : (
-                    <span className="text-fg-faint">
-                      ninguém,{" "}
-                      <Link href="/equipe" className="text-accent hover:underline">
-                        liberar em Equipe
-                      </Link>
-                    </span>
-                  ),
-              },
               { rotulo: "Envio da IA", valor: dono.autonomo ? "autônomo" : "com confirmação" },
             ]}
           />

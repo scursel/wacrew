@@ -16,8 +16,10 @@ export interface QuemAtende {
 
 export async function quemAtendeDoPedido(): Promise<QuemAtende> {
   const cred = credenciaisDoDono();
+  // Sem PANEL_USER/PANEL_PASS o painel é local e aberto: o proxy já trata todo pedido como do dono.
+  if (!cred) return { id: DONO, nome: await lerNomeDono(), papel: 'dono' };
   const chave = chaveDeSessao();
-  if (!cred || !chave) throw new ErroHttp(401, 'Autenticação necessária.');
+  if (!chave) throw new ErroHttp(401, 'Autenticação necessária.');
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   const quem = await quemPelaSessao(token, cred, acharUsuario, chave);
   if (!quem) throw new ErroHttp(401, 'Autenticação necessária.');

@@ -833,8 +833,6 @@ export interface PainelCliente {
     mensagensCliente30d: number;
     /** Limite de mensagens do cliente em 30 dias no contrato; null = sem limite. */
     limiteMensagens: number | null;
-    /** Contas da equipe com este chat liberado. */
-    equipe: Array<{ login: string; nome: string }>;
     autonomo: boolean;
     silenciado: boolean;
   };

@@ -376,6 +376,13 @@ export function Timeline({
     }
   }, [slug, rotas]);
 
+  // Responder assume a conversa no servidor: além das mensagens, refaz a página para o cabeçalho
+  // (responsável e departamento) mostrar o estado novo.
+  const aoEnviar = useCallback(() => {
+    void poll();
+    router.refresh();
+  }, [poll, router]);
+
   useEffect(() => {
     const id = setInterval(poll, 3000);
     return () => clearInterval(id);
@@ -570,7 +577,7 @@ export function Timeline({
         slug={slug}
         nome={groupName}
         groupJid={ultimoGroupJid(messages)}
-        onSent={poll}
+        onSent={aoEnviar}
         draft={draft}
         onPedirRascunho={rotas.recursos.copiloto ? pedirRascunho : undefined}
         rascunho={

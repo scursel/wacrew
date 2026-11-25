@@ -38,7 +38,10 @@ describe('atribuições', () => {
     await a.liberarLogin('ana');
     expect((await a.lerAtribuicoes()).x?.responsavel).toBeNull();
     expect((await a.lerAtribuicoes()).y?.responsavel).toBe('bia');
+    await a.registrar('z', { tipo: 'sugestao', departamento: 'fin' });
     await a.limparDepartamento('fin');
     expect((await a.lerAtribuicoes()).y).toMatchObject({ departamento: null, origemDepartamento: null });
+    // Departamento apagado: a conversa volta a poder ser classificada pela IA.
+    expect((await a.lerAtribuicoes()).z?.iaTentouEm).toBeUndefined();
   });
 });

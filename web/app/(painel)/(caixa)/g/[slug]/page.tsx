@@ -1,5 +1,6 @@
 import { GroupWorkspace } from "@/app/components/GroupWorkspace";
 import { atribuicaoDaConversaAberta, conversasDaRequisicao } from "@/lib/caixa-dados";
+import { canonicoGlobal } from "@/lib/equipe/quem";
 import { conversationName, readGroupMessages, readGroupRecords } from "@/lib/data";
 import { DONO } from "@/lib/equipe/atribuicoes";
 import { dadosDoPainel } from "@/lib/painel-cliente";
@@ -29,8 +30,8 @@ export default async function GroupPage({
     { slug, nome: g?.name ?? groupName, avatarPath: g?.avatarPath ?? null, registros },
     triage,
   );
-  // O dono atribui pelo próprio slug (a lista do dono não agrupa DM partida).
-  const atribuicao = await atribuicaoDaConversaAberta(slug, DONO);
+  // A atribuição mora no slug canônico (DM partida em telefone × LID é uma conversa só).
+  const atribuicao = await atribuicaoDaConversaAberta((await canonicoGlobal())(slug), DONO);
 
   return (
     <GroupWorkspace
