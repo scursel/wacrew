@@ -1,6 +1,7 @@
 import { GroupWorkspace } from "@/app/components/GroupWorkspace";
-import { conversasDaRequisicao } from "@/lib/caixa-dados";
+import { atribuicaoDaConversaAberta, conversasDaRequisicao } from "@/lib/caixa-dados";
 import { conversationName, readGroupMessages, readGroupRecords } from "@/lib/data";
+import { DONO } from "@/lib/equipe/atribuicoes";
 import { dadosDoPainel } from "@/lib/painel-cliente";
 import { readTriage } from "@/lib/triage";
 import { ultimoAtendimento } from "@/lib/ultimo-atendimento";
@@ -28,6 +29,8 @@ export default async function GroupPage({
     { slug, nome: g?.name ?? groupName, avatarPath: g?.avatarPath ?? null, registros },
     triage,
   );
+  // O dono atribui pelo próprio slug (a lista do dono não agrupa DM partida).
+  const atribuicao = await atribuicaoDaConversaAberta(slug, DONO);
 
   return (
     <GroupWorkspace
@@ -40,6 +43,7 @@ export default async function GroupPage({
       painel={painel}
       agora={Date.now()}
       donoLogin={process.env.PANEL_USER?.trim() || null}
+      atribuicao={atribuicao}
     />
   );
 }

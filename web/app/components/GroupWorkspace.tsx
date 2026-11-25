@@ -5,6 +5,8 @@ import { useCallback, useEffect, useState } from "react";
 import type { PainelCliente as DadosPainel } from "@/lib/caixa";
 import type { MessageView } from "@/lib/data";
 import type { UltimoAtendimento } from "@/lib/ultimo-atendimento";
+import type { DadosAtribuicaoConversa } from "@/lib/caixa-dados";
+import { AtribuicaoConversa, enviarAtribuicao } from "./caixa/AtribuicaoConversa";
 import { PainelCliente } from "./caixa/PainelCliente";
 import { useRotas } from "./RotasPainel";
 import { Timeline } from "./Timeline";
@@ -18,8 +20,9 @@ type Resolucao = "parada" | "salvando" | "feita" | "erro";
 
 /**
  * Conversa e painel do cliente: o centro e a direita da Caixa. Aqui moram as
- * ações da conversa (modo de envio, silenciar, resolver) e o painel, que abre
- * e fecha com "]" ou pelo botão do cabeçalho. "E" resolve a conversa aberta.
+ * ações da conversa (atribuição, modo de envio, silenciar, resolver) e o painel,
+ * que abre e fecha com "]" ou pelo botão do cabeçalho. "E" resolve a conversa
+ * aberta, no dono e na equipe.
  */
 export function GroupWorkspace({
   slug,
@@ -30,6 +33,7 @@ export function GroupWorkspace({
   painel,
   agora,
   donoLogin = null,
+  atribuicao,
 }: {
   slug: string;
   groupName: string;
@@ -42,6 +46,8 @@ export function GroupWorkspace({
   agora: number;
   /** Login do dono no painel, para separar o envio dele do da equipe. */
   donoLogin?: string | null;
+  /** Responsável e departamento da conversa, e quem pode receber (ver `atribuicaoDaConversaAberta`). */
+  atribuicao: DadosAtribuicaoConversa;
 }) {
   const rotas = useRotas();
   const router = useRouter();
@@ -98,7 +104,7 @@ export function GroupWorkspace({
   const [silenciado, setSilenciado] = useState(dono?.silenciado ?? false);
   const [resolucao, setResolucao] = useState<Resolucao>("parada");
 
-  const triagem = useCallback(async (action: "resolved" | "muted", value: string | boolean) => {
+  const triagem = useCallback(async (action: "muted", value: boolean) => {
     const res = await fetch("/api/triage", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -108,18 +114,19 @@ export function GroupWorkspace({
     if (!res.ok || !data.ok) throw new Error("falha");
   }, [slug]);
 
-  // Resolver tira a conversa de "Esperando você" até o cliente escrever de novo.
+  // Resolver solta a conversa: tira o responsável e a marca como resolvida na triagem (a rota faz os dois).
+  // Vale para o dono e para a equipe.
   const resolver = useCallback(async () => {
-    if (!dono || resolucao === "salvando") return;
+    if (resolucao === "salvando") return;
     setResolucao("salvando");
     try {
-      await triagem("resolved", new Date().toISOString());
+      await enviarAtribuicao(slug, { acao: "resolver" });
       setResolucao("feita");
       router.refresh();
     } catch {
       setResolucao("erro");
     }
-  }, [dono, resolucao, triagem, router]);
+  }, [resolucao, slug, router]);
 
   useEffect(() => {
     if (resolucao !== "feita" && resolucao !== "erro") return;
@@ -144,14 +151,14 @@ export function GroupWorkspace({
       if (e.key === "]") {
         e.preventDefault();
         alternarPainel();
-      } else if ((e.key === "e" || e.key === "E") && dono) {
+      } else if (e.key === "e" || e.key === "E") {
         e.preventDefault();
         void resolver();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [alternarPainel, resolver, dono]);
+  }, [alternarPainel, resolver]);
 
   const painelVisivel = estreito ? sobreposto : aberto;
 
@@ -178,18 +185,16 @@ export function GroupWorkspace({
           <Icone nome="mute" />
         </IconButton>
       )}
-      {dono && (
-        <Button
-          size="sm"
-          onClick={resolver}
-          loading={resolucao === "salvando"}
-          title="Marcar como resolvida (E)"
-          className="max-[860px]:h-10"
-        >
-          {resolucao !== "salvando" && <Icone nome="check" tamanho={15} />}
-          {resolucao === "feita" ? "Resolvida" : resolucao === "erro" ? "Tente de novo" : "Resolver"}
-        </Button>
-      )}
+      <Button
+        size="sm"
+        onClick={resolver}
+        loading={resolucao === "salvando"}
+        title="Marcar como resolvida e soltar o responsável (E)"
+        className="max-[860px]:h-10"
+      >
+        {resolucao !== "salvando" && <Icone nome="check" tamanho={15} />}
+        {resolucao === "feita" ? "Resolvida" : resolucao === "erro" ? "Tente de novo" : "Resolver"}
+      </Button>
       <IconButton
         size="sm"
         data-alterna-painel
@@ -208,6 +213,14 @@ export function GroupWorkspace({
   return (
     <div className="relative flex min-h-0 min-w-0 flex-1">
       <section aria-label={`Conversa com ${groupName}`} className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <AtribuicaoConversa
+          slug={slug}
+          eu={atribuicao.eu}
+          inicial={atribuicao.inicial}
+          departamentos={atribuicao.departamentos}
+          equipe={atribuicao.equipe}
+          ultimoAtendimento={ultimoAtendimento}
+        />
         <Timeline
           slug={slug}
           groupName={groupName}

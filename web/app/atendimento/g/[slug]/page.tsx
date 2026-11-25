@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { GroupWorkspace } from "@/app/components/GroupWorkspace";
+import { atribuicaoDaConversaAberta } from "@/lib/caixa-dados";
 import { conversationName, readGroupRecords } from "@/lib/data";
 import { fundirMensagens } from "@/lib/dm-irmaos";
 import { irmaosLiberados } from "@/lib/equipe/acesso";
@@ -32,5 +33,19 @@ export default async function AtendimentoChat({ params }: { params: Promise<{ sl
     { slug, nome: groupName, avatarPath: item?.avatarPath ?? null, registros },
     null,
   );
-  return <GroupWorkspace key={slug} slug={slug} groupName={groupName} messages={messages} ultimoAtendimento={await ultimoAtendimento(irmaos, undefined, registros)} total={total} painel={painel} agora={Date.now()} />;
+  // A atribuição vale no slug canônico, como na lista da equipe.
+  const atribuicao = await atribuicaoDaConversaAberta(canonico, p.a.usuario.login);
+  return (
+    <GroupWorkspace
+      key={slug}
+      slug={slug}
+      groupName={groupName}
+      messages={messages}
+      ultimoAtendimento={await ultimoAtendimento(irmaos, undefined, registros)}
+      total={total}
+      painel={painel}
+      agora={Date.now()}
+      atribuicao={atribuicao}
+    />
+  );
 }
