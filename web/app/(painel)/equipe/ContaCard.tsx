@@ -4,15 +4,17 @@ import { useState } from "react";
 import { haQuanto } from "@/app/components/tempo";
 import { Avatar, Badge, BotaoConfirmar, Button, Card, Field, Input, Pares } from "@/app/components/ui";
 import { instanteLongo } from "@/lib/formatar-data";
-import type { RodarComando, UsuarioPublico } from "./tipos";
+import type { Departamento, RodarComando, UsuarioPublico } from "./tipos";
 
 /** Uma conta da equipe: dados, nome, senha, ativar/desativar e apagar. */
 export function ContaCard({
   conta,
+  departamentos,
   rodar,
   aoSenhaNova,
 }: {
   conta: UsuarioPublico;
+  departamentos: Departamento[];
   rodar: RodarComando;
   aoSenhaNova: (senha: string) => void;
 }) {
@@ -78,6 +80,7 @@ export function ContaCard({
             valor: conta.ultimoAcesso ? <span title={instanteLongo(conta.ultimoAcesso)}>{haQuanto(conta.ultimoAcesso)}</span> : "Nunca entrou",
           },
           { rotulo: "Criada em", valor: <span className="font-mono tabular-nums">{instanteLongo(conta.criadoEm)}</span> },
+          { rotulo: "Departamentos", valor: departamentos.filter((d) => d.membros.includes(conta.login)).map((d) => d.nome).join(", ") || "Nenhum" },
           {
             rotulo: "Acesso",
             valor: conta.ativo ? "Entra e vê todas as conversas" : "Bloqueado até você ativar de novo",

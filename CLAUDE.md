@@ -77,12 +77,16 @@ Cada chat tem um modo, persistido (tool `definir_modo`, lido pelo `responder`):
 O retorno do `responder` traz o `modo` do chat. É **convenção que a IA respeita**, não trava de
 código — então NÃO burle o `confirmar`. Pra saber o modo de um chat sem enviar, use `estado_triagem`.
 
-## Equipe no painel (acesso por chat)
+## Equipe no painel
 
-O operador cria contas em `/equipe` (login, senha, chats liberados). O atendente entra pelo
-mesmo link e cai em `/atendimento`: só existe pra ele o que foi liberado (404 no resto), sem QR,
-notas, contrato nem copiloto. O envio dele sai na hora, como o operador, passando pelos
-bloqueios da revisão (tu, culpa, balão repetido). Toda mensagem dele é gravada com
+O operador cria contas e departamentos em `/equipe`, escolhe os membros e seu nome na assinatura.
+Toda a equipe vê todas as conversas, sem acesso a QR, notas, contrato nem copiloto. A Caixa tem
+vistas Fila, Esperando, Departamento, Minhas e Todas. Cada conversa pode ter departamento e
+responsável: assumir, delegar ou soltar; responder assume e resolver solta. A IA pré-seleciona
+o departamento quando disponível (`WAC_DEPARTAMENTO_MODEL` troca o modelo); sem IA, fica sem
+departamento até a escolha manual. Envios pelo painel levam `*Nome:*` na primeira linha; MCP,
+plantão, sync e envios humanos não levam assinatura. O envio passa pelos bloqueios da revisão
+(tu, culpa, balão repetido). Toda mensagem do atendente é gravada com
 `ator: "painel"` e `usuario: <login>`. O envio direto do PRÓPRIO operador pelo painel (sessão
 de cookie, não Basic) também sai carimbado, com `usuario: <PANEL_USER>`; o MCP, o plantão e o
 sync usam Basic e não levam carimbo.

@@ -5,6 +5,7 @@ import { mensagemDe, pedirJson, useCarregar } from "@/app/components/pedirJson";
 import { Aviso, Button, CabecalhoPagina, CorpoPagina, Grade12, Icone } from "@/app/components/ui";
 import { ContaCard } from "./ContaCard";
 import { ContasCard } from "./ContasCard";
+import { DepartamentosCard } from "./DepartamentosCard";
 import { NovaContaCard } from "./NovaContaCard";
 import type { Comando, DadosEquipe, RodarComando } from "./tipos";
 
@@ -133,11 +134,13 @@ export function EquipeView() {
                 <ContaCard
                   key={conta.login}
                   conta={conta}
+                  departamentos={dados?.departamentos ?? []}
                   rodar={rodar}
                   aoSenhaNova={(senha) => setRetorno({ tom: "senha", login: conta.login, senha })}
                 />
               )}
             </div>
+            {dados && <DepartamentosCard departamentos={dados.departamentos} usuarios={usuarios} nomeDono={dados.nomeDono} rodar={rodar} />}
           </Grade12>
         )}
       </CorpoPagina>
