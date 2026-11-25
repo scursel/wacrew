@@ -6,7 +6,7 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } fro
 import { fracaoAnel, nivelEspera } from "@/lib/aparencia";
 import { type AguardandoOk, type DadosFila, type EntregaViva, type SecaoFila, type VistaFila, montarFila } from "@/lib/caixa";
 import { checarSessao, useRotas } from "../RotasPainel";
-import { Button, Segmentado, cn, Icone } from "../ui";
+import { Button, Segmentado, Select, cn, Icone } from "../ui";
 import { Kbd } from "../ui/Kbd";
 import { useListNav } from "../useListNav";
 import { InboxItem } from "./InboxItem";
@@ -16,6 +16,13 @@ export type DadosCaixa = DadosFila;
 const CHAVE_VISTA = "wac-caixa-vista";
 const CIRCUNFERENCIA = 2 * Math.PI * 6;
 const COR_NIVEL = { neutro: "text-fg-faint", atencao: "text-warn", urgente: "text-danger" } as const;
+const VISTAS: VistaFila[] = ["fila", "esperando", "departamento", "minhas", "ia", "todas"];
+
+/** A vista salva no navegador; "Com a IA" só existe para o dono. */
+function vistaSalva(valor: string | null, dono: boolean): VistaFila | null {
+  const v = VISTAS.find((x) => x === valor);
+  return v === undefined || (v === "ia" && !dono) ? null : v;
+}
 
 /** Anel da seção "Esperando você": a cor e o preenchimento seguem a espera mais antiga. */
 function AnelSecao({ ms }: { ms: number }) {
@@ -99,16 +106,19 @@ function Vazio({ titulo, children }: { titulo: string; children?: ReactNode }) {
 }
 
 /**
- * A fila da Caixa: a lista de conversas que saiu da casca. Vistas Esperando,
- * Com a IA (só o dono) e Todas, filtro por nome ou etiqueta, seções e o
- * teclado (J/K/Enter/U). Os dados de espera chegam do servidor (atualizados a
- * cada 20 s); o que a IA está fazendo vem da fila de envio a cada 10 s.
+ * A fila da Caixa: a lista de conversas que saiu da casca. Vistas Fila, Esperando,
+ * Departamento (com seletor quando há mais de um), Minhas, Com a IA (só o dono) e
+ * Todas; filtro por nome ou etiqueta, seções e o teclado (J/K/Enter/U). Os dados de
+ * espera chegam do servidor (atualizados a cada 20 s); o que a IA está fazendo vem da
+ * fila de envio a cada 10 s.
  */
 export function ListaConversas({ dados, aviso, className }: { dados: DadosCaixa; aviso?: ReactNode; className?: string }) {
   const rotas = useRotas();
   const dono = rotas.modo === "dono";
   const pathname = usePathname();
   const [vista, setVista] = useState<VistaFila>("esperando");
+  /** Departamento escolhido no seletor ("" = os da pessoa, ou o primeiro, para o dono). */
+  const [depto, setDepto] = useState("");
   const [filtro, setFiltro] = useState("");
   const [arquivadasAbertas, setArquivadasAbertas] = useState(false);
   const [paradasAbertas, setParadasAbertas] = useState(false);
@@ -119,10 +129,18 @@ export function ListaConversas({ dados, aviso, className }: { dados: DadosCaixa;
   const [agora, setAgora] = useState(dados.geradoEm);
   const listaRef = useRef<HTMLElement>(null);
 
+  // Departamentos que o seletor oferece: o dono vê todos; o atendente, só os seus.
+  const opcoesDepto = useMemo(() => {
+    const meus = new Set(atuais.meusDepartamentos);
+    return dono ? atuais.departamentos : atuais.departamentos.filter((d) => meus.has(d.id));
+  }, [atuais.departamentos, atuais.meusDepartamentos, dono]);
+  // O dono sempre tem um departamento escolhido (não há "todos os meus"); o atendente, "" = todos os seus.
+  const deptoAtivo = opcoesDepto.some((d) => d.id === depto) ? depto : dono ? (opcoesDepto[0]?.id ?? "") : "";
+
   useEffect(() => {
     try {
-      const salva = window.localStorage.getItem(CHAVE_VISTA);
-      if (salva === "esperando" || salva === "todas" || (salva === "ia" && dono)) setVista(salva);
+      const v = vistaSalva(window.localStorage.getItem(CHAVE_VISTA), dono);
+      if (v) setVista(v);
     } catch {
       /* sem armazenamento: começa em Esperando */
     }
@@ -193,10 +211,24 @@ export function ListaConversas({ dados, aviso, className }: { dados: DadosCaixa;
   const fila = useMemo(
     () =>
       montarFila(
-        { esperando: atuais.esperando, conversas: atuais.conversas, entregas: dono ? ia.entregas : [], aguardandoOk: dono ? ia.aguardandoOk : [] },
-        { vista, filtro, arquivadasAbertas, paradasAbertas, agoraMs: agora },
+        {
+          esperando: atuais.esperando,
+          conversas: atuais.conversas,
+          entregas: dono ? ia.entregas : [],
+          aguardandoOk: dono ? ia.aguardandoOk : [],
+          meusDepartamentos: atuais.meusDepartamentos,
+        },
+        {
+          vista,
+          filtro,
+          arquivadasAbertas,
+          paradasAbertas,
+          agoraMs: agora,
+          eu: atuais.eu,
+          departamento: deptoAtivo || undefined,
+        },
       ),
-    [atuais.esperando, atuais.conversas, ia, dono, vista, filtro, arquivadasAbertas, paradasAbertas, agora],
+    [atuais.esperando, atuais.conversas, atuais.meusDepartamentos, atuais.eu, ia, dono, vista, filtro, arquivadasAbertas, paradasAbertas, agora, deptoAtivo],
   );
 
   const atual = useMemo(() => {
@@ -241,13 +273,29 @@ export function ListaConversas({ dados, aviso, className }: { dados: DadosCaixa;
           rotulo="Mostrar"
           valor={vista}
           aoMudar={mudarVista}
-          className="max-[860px]:[&>button]:h-9"
+          className="flex-wrap max-[860px]:[&>button]:h-9"
           opcoes={[
+            { valor: "fila" as const, rotulo: "Fila", num: fila.contagens.fila },
             { valor: "esperando" as const, rotulo: "Esperando", num: fila.contagens.esperando },
+            { valor: "departamento" as const, rotulo: "Departamento" },
+            { valor: "minhas" as const, rotulo: "Minhas", num: fila.contagens.minhas },
             ...(dono ? [{ valor: "ia" as const, rotulo: "Com a IA", num: fila.contagens.ia }] : []),
             { valor: "todas" as const, rotulo: "Todas" },
           ]}
         />
+        {vista === "departamento" && opcoesDepto.length > 1 && (
+          <div className="flex items-center gap-2 text-[12.5px] text-fg-faint">
+            <span>Departamento</span>
+            <Select tamanho="sm" aria-label="Departamento" value={deptoAtivo} onChange={(e) => setDepto(e.target.value)}>
+              {!dono && <option value="">Todos os meus</option>}
+              {opcoesDepto.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.nome}
+                </option>
+              ))}
+            </Select>
+          </div>
+        )}
         <label className="flex h-[34px] items-center gap-2 rounded-control border border-line-2 bg-surface px-2.5 text-fg-faint transition-colors focus-within:border-accent focus-within:shadow-[0_0_0_3px_var(--color-accent-soft)] max-[860px]:h-10">
           <Icone nome="search" />
           <span className="sr-only">Filtrar a fila</span>
@@ -296,6 +344,36 @@ export function ListaConversas({ dados, aviso, className }: { dados: DadosCaixa;
                 Ver todas as conversas
               </Button>
             </Vazio>
+          ) : vista === "fila" ? (
+            <Vazio titulo="Ninguém na fila">
+              <p>Quem escrever e ninguém tiver assumido aparece aqui. Assuma uma conversa para ela sair daqui.</p>
+            </Vazio>
+          ) : vista === "minhas" ? (
+            <Vazio titulo="Nenhuma conversa sua">
+              <p>Conversas que você assume, ou que recebe por delegação, aparecem aqui.</p>
+            </Vazio>
+          ) : vista === "departamento" ? (
+            opcoesDepto.length === 0 ? (
+              <Vazio titulo={dono ? "Nenhum departamento ainda" : "Você não está em nenhum departamento"}>
+                <p>
+                  {dono ? (
+                    <>
+                      Crie os departamentos em{" "}
+                      <Link href="/equipe" className="text-accent underline-offset-2 hover:underline">
+                        Equipe
+                      </Link>
+                      .
+                    </>
+                  ) : (
+                    "Peça ao responsável para incluir você em um departamento."
+                  )}
+                </p>
+              </Vazio>
+            ) : (
+              <Vazio titulo="Nenhuma conversa neste departamento">
+                <p>Quando uma conversa entrar aqui (pela IA ou por alguém da equipe), ela aparece nesta lista.</p>
+              </Vazio>
+            )
           ) : vista === "ia" ? (
             <Vazio titulo="A IA não está cuidando de nenhuma conversa">
               <p>Respostas agendadas ou saindo e perguntas esperando o seu OK aparecem aqui.</p>
@@ -311,8 +389,8 @@ export function ListaConversas({ dados, aviso, className }: { dados: DadosCaixa;
               </p>
             </Vazio>
           ) : (
-            <Vazio titulo="Nenhuma conversa liberada para você">
-              <p>Peça ao responsável para liberar os chats que você atende.</p>
+            <Vazio titulo="Nenhuma conversa ainda">
+              <p>As conversas da equipe aparecem aqui assim que chegarem.</p>
             </Vazio>
           )
         ) : (

@@ -32,7 +32,8 @@ export function EstadoDaIa({ ia, className }: { ia: EstadoIa; className?: string
 
 /**
  * Uma linha da fila: avatar, nome com uma etiqueta (ou "menção"), espera ou
- * estado da IA, prévia "Fulano: texto" e não lidas. A conversa aberta ganha a
+ * estado da IA, prévia "Fulano: texto", não lidas e, embaixo, chips discretos do
+ * departamento (com "sugerido pela IA") e do responsável. A conversa aberta ganha a
  * barra de acento; a linha do cursor do teclado ganha o fundo de hover.
  */
 export function InboxItem({
@@ -116,6 +117,26 @@ export function InboxItem({
         )}
       </span>
       <Contador n={linha.naoLidas} destaque={linha.mencao} className="col-start-3 justify-self-end" />
+      {(linha.departamentoNome || linha.responsavelNome) && (
+        // Depois do contador de propósito: na grade, o contador continua na linha da prévia e os chips descem uma linha.
+        <span className="col-start-2 col-end-4 flex min-w-0 flex-wrap items-center gap-1.5 text-[11.5px] leading-none text-fg-faint">
+          {linha.departamentoNome && (
+            <span
+              title={linha.departamentoSugerido ? "Departamento sugerido pela IA; confirme ou troque" : "Departamento da conversa"}
+              className="inline-flex max-w-full items-center gap-1.5 rounded-[5px] border border-line-2 px-1.5 py-[3px] text-fg-dim"
+            >
+              <span className="truncate">{linha.departamentoNome}</span>
+              {linha.departamentoSugerido && <span className="whitespace-nowrap text-id-ia">sugerido pela IA</span>}
+            </span>
+          )}
+          {linha.responsavelNome && (
+            <span title="Responsável pela conversa" className="inline-flex min-w-0 items-center gap-1">
+              <Icone nome="user" tamanho={12} />
+              <span className="truncate">{linha.responsavelNome}</span>
+            </span>
+          )}
+        </span>
+      )}
     </Link>
   );
 }
