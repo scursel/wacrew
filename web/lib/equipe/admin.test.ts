@@ -47,11 +47,6 @@ describe('executar', () => {
     expect(u.ativo).toBe(false);
     expect(u.versao).toBe(v0 + 2);
   });
-  it('chats: limpa, tira repetidos e recusa slug com caractere estranho', async () => {
-    await admin.executar({ acao: 'chats', login: 'ana', chats: ['grupo-a', 'grupo-a', ' dm-5511999999999 '] }, 'operador');
-    expect((await store.acharUsuario('ana'))!.chats).toEqual(['grupo-a', 'dm-5511999999999']);
-    await expect(admin.executar({ acao: 'chats', login: 'ana', chats: ['../x'] }, 'operador')).rejects.toThrow(/slug/);
-  });
   it('conta inexistente é erro; apagar remove', async () => {
     await expect(admin.executar({ acao: 'editar', login: 'zeca', nome: 'Z' }, 'operador')).rejects.toThrow(/não existe/);
     await admin.executar({ acao: 'apagar', login: 'ana' }, 'operador');
@@ -111,8 +106,29 @@ describe('executar: corpo vindo da rede', () => {
     await recusa({ acao: 'editar', login: 'eva', nome: null });
     await recusa({ acao: 'senha', login: 'eva', senha: { a: 1 } });
     await recusa({ acao: 'ativo', login: 'eva', ativo: 'false' });
-    await recusa({ acao: 'chats', login: 'eva', chats: 'grupo-a' });
-    await recusa({ acao: 'chats', login: 'eva', chats: ['grupo-a', 3] });
+    await recusa({ acao: 'dep-membros', id: 'x', membros: ['ana', 3] });
+    await recusa({ acao: 'dep-editar', id: 'x', nome: 'X', descricao: 3 });
     expect(await store.acharUsuario('eva')).toBeNull();
+  });
+});
+
+describe('departamentos e atribuições', () => {
+  it('valida membros e limpa vínculos ao desativar e apagar', async () => {
+    const deps = await import('./departamentos');
+    const atribuicoes = await import('./atribuicoes');
+    await admin.executar({ acao: 'criar', login: 'bia', nome: 'Bia' }, 'operador');
+    await admin.executar({ acao: 'dep-criar', nome: 'Financeiro' }, 'operador');
+    await expect(admin.executar({ acao: 'dep-membros', id: 'financeiro', membros: ['x'] }, 'operador')).rejects.toThrow('conta inexistente: x');
+    await admin.executar({ acao: 'dep-membros', id: 'financeiro', membros: ['bia'] }, 'operador');
+    await atribuicoes.registrar('chat', { tipo: 'delegar', por: 'bia', para: 'bia', departamento: 'financeiro' });
+    await admin.executar({ acao: 'ativo', login: 'bia', ativo: false }, 'operador');
+    expect((await atribuicoes.lerAtribuicoes()).chat).toMatchObject({ responsavel: null, departamento: 'financeiro' });
+    await atribuicoes.registrar('chat', { tipo: 'assumir', por: 'bia' });
+    await admin.executar({ acao: 'apagar', login: 'bia' }, 'operador');
+    expect((await atribuicoes.lerAtribuicoes()).chat?.responsavel).toBeNull();
+    expect((await deps.lerDepartamentos())[0]?.membros).toEqual([]);
+    await admin.executar({ acao: 'dep-apagar', id: 'financeiro' }, 'operador');
+    expect(await deps.lerDepartamentos()).toEqual([]);
+    expect((await atribuicoes.lerAtribuicoes()).chat).toMatchObject({ departamento: null, origemDepartamento: null });
   });
 });

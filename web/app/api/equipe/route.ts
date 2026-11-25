@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { listGroups } from "@/lib/data";
 import { type Comando, executar } from "@/lib/equipe/admin";
 import { lerUsuarios, publico } from "@/lib/equipe/usuarios";
+import { lerDepartamentos, lerNomeDono } from "@/lib/equipe/departamentos";
 import { readTriage } from "@/lib/triage";
 
 export const runtime = "nodejs";
@@ -9,9 +10,11 @@ export const dynamic = "force-dynamic";
 
 /** Contas (sem senha) + chats e etiquetas pra montar a tela de permissões. */
 export async function GET() {
-  const [usuarios, grupos, triage] = await Promise.all([lerUsuarios(), listGroups(), readTriage()]);
+  const [usuarios, grupos, triage, departamentos, nomeDono] = await Promise.all([lerUsuarios(), listGroups(), readTriage(), lerDepartamentos(), lerNomeDono()]);
   return NextResponse.json({
     usuarios: usuarios.map(publico),
+    departamentos,
+    nomeDono,
     chats: grupos.map((g) => ({ slug: g.slug, nome: g.name, etiquetas: triage.etiquetas[g.slug] ?? [] })),
   });
 }

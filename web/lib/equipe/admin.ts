@@ -1,16 +1,21 @@
 import { gerarSenha, hashSenha } from './senha';
-import { alterarUsuarios, LOGIN_RE, publico, type Usuario, type UsuarioPublico } from './usuarios';
+import { alterarUsuarios, lerUsuarios, LOGIN_RE, publico, type Usuario, type UsuarioPublico } from './usuarios';
 import { apagarVisto } from './visto';
+import { alterarDepartamentos, gravarNomeDono } from './departamentos';
+import { liberarLogin, limparDepartamento } from './atribuicoes';
 
 export type Comando =
   | { acao: 'criar'; login: string; nome: string; senha?: string }
   | { acao: 'editar'; login: string; nome: string }
   | { acao: 'senha'; login: string; senha?: string }
   | { acao: 'ativo'; login: string; ativo: boolean }
-  | { acao: 'chats'; login: string; chats: string[] }
-  | { acao: 'apagar'; login: string };
+  | { acao: 'apagar'; login: string }
+  | { acao: 'dep-criar'; nome: string; descricao?: string }
+  | { acao: 'dep-editar'; id: string; nome: string; descricao?: string }
+  | { acao: 'dep-apagar'; id: string }
+  | { acao: 'dep-membros'; id: string; membros: string[] }
+  | { acao: 'nome-dono'; nome: string };
 
-const SLUG_RE = /^[A-Za-z0-9._-]+$/;
 const SENHA_MIN = 8;
 
 function senhaOuGerada(senha: string | undefined): { senha: string; gerada?: string } {
@@ -22,14 +27,15 @@ function senhaOuGerada(senha: string | undefined): { senha: string; gerada?: str
   return { senha };
 }
 
-const ACOES = new Set(['criar', 'editar', 'senha', 'ativo', 'chats', 'apagar']);
+const ACOES = new Set(['criar', 'editar', 'senha', 'ativo', 'apagar', 'dep-criar', 'dep-editar', 'dep-apagar', 'dep-membros', 'nome-dono']);
 
 /** O corpo vem da rede: confere o formato antes de tocar em qualquer campo. */
 function validarComando(c: unknown): asserts c is Comando {
   const ok = (() => {
     if (!c || typeof c !== 'object' || Array.isArray(c)) return false;
     const x = c as Record<string, unknown>;
-    if (typeof x.acao !== 'string' || !ACOES.has(x.acao) || typeof x.login !== 'string') return false;
+    if (typeof x.acao !== 'string' || !ACOES.has(x.acao)) return false;
+    if (!x.acao.startsWith('dep-') && x.acao !== 'nome-dono' && typeof x.login !== 'string') return false;
     const senhaOk = x.senha === undefined || typeof x.senha === 'string';
     switch (x.acao) {
       case 'criar':
@@ -40,8 +46,11 @@ function validarComando(c: unknown): asserts c is Comando {
         return senhaOk;
       case 'ativo':
         return typeof x.ativo === 'boolean';
-      case 'chats':
-        return Array.isArray(x.chats) && x.chats.every((s) => typeof s === 'string');
+      case 'dep-criar': return typeof x.nome === 'string' && (x.descricao === undefined || typeof x.descricao === 'string');
+      case 'dep-editar': return typeof x.id === 'string' && typeof x.nome === 'string' && (x.descricao === undefined || typeof x.descricao === 'string');
+      case 'dep-apagar': return typeof x.id === 'string';
+      case 'dep-membros': return typeof x.id === 'string' && Array.isArray(x.membros) && x.membros.every((s) => typeof s === 'string');
+      case 'nome-dono': return typeof x.nome === 'string';
       default:
         return true;
     }
@@ -72,6 +81,38 @@ export async function executar(
   agora = new Date(),
 ): Promise<{ usuario?: UsuarioPublico; senhaGerada?: string }> {
   validarComando(c);
+  if (c.acao === 'nome-dono') { await gravarNomeDono(c.nome); return {}; }
+  if (c.acao === 'dep-criar' || c.acao === 'dep-editar') {
+    const nome = c.nome.trim();
+    if (!nome) throw new Error('nome é obrigatório');
+    await alterarDepartamentos((lista) => {
+      if (c.acao === 'dep-editar') {
+        const d = lista.find((x) => x.id === c.id);
+        if (!d) throw new Error('departamento inexistente');
+        d.nome = nome; d.descricao = (c.descricao ?? '').trim();
+      } else {
+        const base = nome.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+        if (!base) throw new Error('nome de departamento inválido');
+        let id = base; let n = 2;
+        while (lista.some((d) => d.id === id)) id = `${base}-${n++}`;
+        lista.push({ id, nome, descricao: (c.descricao ?? '').trim(), membros: [] });
+      }
+    });
+    return {};
+  }
+  if (c.acao === 'dep-apagar') {
+    await alterarDepartamentos((lista) => { const i = lista.findIndex((d) => d.id === c.id); if (i < 0) throw new Error('departamento inexistente'); lista.splice(i, 1); });
+    await limparDepartamento(c.id);
+    return {};
+  }
+  if (c.acao === 'dep-membros') {
+    const membros = [...new Set(c.membros.map((m) => m.trim().toLowerCase()))];
+    const usuarios = await lerUsuarios();
+    const ausente = membros.find((m) => !usuarios.some((u) => u.login === m));
+    if (ausente !== undefined) throw new Error(`conta inexistente: ${ausente}`);
+    await alterarDepartamentos((lista) => { const d = lista.find((x) => x.id === c.id); if (!d) throw new Error('departamento inexistente'); d.membros = membros; });
+    return {};
+  }
   const login = c.login.trim().toLowerCase();
 
   if (c.acao === 'criar') {
@@ -111,6 +152,8 @@ export async function executar(
       if (i < 0) throw new Error(`conta "${login}" não existe`);
       lista.splice(i, 1);
     });
+    await liberarLogin(login);
+    await alterarDepartamentos((lista) => { for (const d of lista) d.membros = d.membros.filter((m) => m !== login); });
     try {
       await apagarVisto(login);
     } catch (e) {
@@ -129,13 +172,9 @@ export async function executar(
     } else if (c.acao === 'ativo') {
       u.ativo = c.ativo;
       u.versao += 1;
-    } else {
-      const chats = [...new Set(c.chats.map((s) => s.trim()).filter(Boolean))];
-      const ruim = chats.find((s) => !SLUG_RE.test(s));
-      if (ruim) throw new Error(`slug inválido: ${ruim}`);
-      u.chats = chats;
     }
     return publico(u);
   });
+  if (c.acao === 'ativo' && !c.ativo) await liberarLogin(login);
   return { usuario };
 }
