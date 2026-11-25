@@ -9,7 +9,7 @@ export default function ConfigPage() {
       <CabecalhoPagina
         variante="barra"
         titulo="Configurações"
-        subtitulo={<span className="max-[860px]:hidden">Conexão, grupos, avisos e transcrição</span>}
+        subtitulo={<span className="max-[860px]:hidden">Conexão, grupos, avisos, transcrição e modelos de IA</span>}
       />
       <ConfigView />
     </>

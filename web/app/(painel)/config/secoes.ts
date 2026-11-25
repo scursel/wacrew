@@ -1,6 +1,6 @@
 import type { NomeIcone } from "@/app/components/ui";
 
-export type IdSecao = "conexao" | "sincronizacao" | "grupos" | "radar" | "transcricao" | "time";
+export type IdSecao = "conexao" | "sincronizacao" | "grupos" | "radar" | "transcricao" | "modelos" | "time";
 
 /** Estado curto de uma seção, mostrado ao lado do nome na navegação ("21/201", "ligado"). */
 export interface Resumo {
@@ -17,6 +17,7 @@ export const SECOES: Array<{ id: IdSecao; rotulo: string; grupo: string; icone: 
   { id: "grupos", rotulo: "Grupos", grupo: "WhatsApp", icone: "users" },
   { id: "radar", rotulo: "Radar", grupo: "Avisos e áudio", icone: "bell" },
   { id: "transcricao", rotulo: "Transcrição", grupo: "Avisos e áudio", icone: "mic" },
+  { id: "modelos", rotulo: "Modelos de IA", grupo: "IA", icone: "spark" },
   { id: "time", rotulo: "Meu time", grupo: "Pessoas", icone: "user" },
 ];
 
