@@ -7,6 +7,8 @@ import { NextResponse } from "next/server";
 import { credenciaisDoDono, metaDoPainel, SESSION_COOKIE } from "@/lib/equipe/autenticar";
 import { assinar, nomeDeQuemEnvia } from "@/lib/equipe/assinatura";
 import { chaveDeSessao } from "@/lib/equipe/sessao";
+import { DONO } from "@/lib/equipe/atribuicoes";
+import { registrarResposta } from "@/lib/equipe/quem";
 import { mimeDoNome, nomeSeguro } from "@/lib/nome-arquivo";
 import { CONTROL_URL } from "@/lib/paths";
 
@@ -33,6 +35,7 @@ export async function POST(req: Request) {
   const kind = form.get("kind");
   const caption = form.get("caption");
   const file = form.get("file");
+  const slug = form.get("slug");
 
   if (typeof jid !== "string" || !jid) {
     return NextResponse.json({ error: "jid é obrigatório" }, { status: 400 });
@@ -86,6 +89,7 @@ export async function POST(req: Request) {
         { status: res.status || 502 },
       );
     }
+    if (meta && typeof slug === "string" && slug) await registrarResposta(slug, DONO);
     return NextResponse.json({ ok: true });
   } catch {
     return NextResponse.json(

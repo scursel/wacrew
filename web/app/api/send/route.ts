@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { credenciaisDoDono, metaDoPainel, SESSION_COOKIE } from "@/lib/equipe/autenticar";
 import { assinar, assinarBaloes, nomeDeQuemEnvia } from "@/lib/equipe/assinatura";
 import { chaveDeSessao } from "@/lib/equipe/sessao";
+import { DONO } from "@/lib/equipe/atribuicoes";
+import { registrarResposta } from "@/lib/equipe/quem";
 import { CONTROL_URL } from "@/lib/paths";
 
 export const runtime = "nodejs";
@@ -89,6 +91,7 @@ export async function POST(req: Request) {
         { status: res.status || 502 },
       );
     }
+    if (meta && typeof body.slug === "string" && body.slug) await registrarResposta(body.slug, DONO);
     // 202 = ticket agendado (entrega humanizada assíncrona); 200 = síncrono/aguardar.
     return NextResponse.json(data, { status: res.status });
   } catch (err) {

@@ -21,6 +21,7 @@ export const CLASSIFICACAO: Record<string, 'dono' | 'atendimento' | 'publico'> =
   'api/agenda/eventos/route.ts': 'dono',
   'api/agent-seen/route.ts': 'dono',
   'api/atendimento/documento/route.ts': 'atendimento',
+  'api/atendimento/atribuicao/route.ts': 'atendimento',
   'api/atendimento/fila/route.ts': 'atendimento',
   'api/atendimento/enviar-midia/route.ts': 'atendimento',
   'api/atendimento/enviar/route.ts': 'atendimento',

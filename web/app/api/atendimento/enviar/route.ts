@@ -4,6 +4,7 @@ import { atendenteDoPedido, exigirChat, irmaosLiberados, respostaDeErro } from "
 import { assinar, nomeDeQuemEnvia } from "@/lib/equipe/assinatura";
 import { destinoDoSlug } from "@/lib/equipe/destino";
 import { motivoDeRecusa, recentesDaConta, registrosDaConversa } from "@/lib/equipe/envio";
+import { registrarResposta } from "@/lib/equipe/quem";
 import { CONTROL_URL } from "@/lib/paths";
 
 export const runtime = "nodejs";
@@ -33,6 +34,7 @@ export async function POST(req: Request) {
     if (!res) return NextResponse.json({ error: "WhatsApp fora do ar agora — tenta de novo em instantes." }, { status: 502 });
     const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
     if (!res.ok || !data.ok) return NextResponse.json({ error: data.error ?? "falha no envio" }, { status: res.status || 502 });
+    await registrarResposta(slug, a.usuario.login);
     return NextResponse.json({ ok: true });
   } catch (e) {
     return respostaDeErro(e);
