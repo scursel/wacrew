@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Despacho, type DespachoDeps } from './despacho.js';
 import type { ArquivoDespacho } from './despacho-core.js';
 
@@ -65,6 +65,9 @@ let fechadas: number[];
 let deps: DespachoDeps;
 
 beforeEach(async () => {
+  // O despacho do fixture é de 04/09 e só aceita comando por 7 dias: o relógio fica um dia depois.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-09-05T12:00:00.000Z'));
   dataDir = await mkdtemp(join(tmpdir(), 'wac-despacho-'));
   await mkdir(join(dataDir, 'despacho'));
   await writeFile(join(dataDir, 'despacho', '2026-09-04T0610.json'), JSON.stringify(arquivo()));
@@ -95,7 +98,10 @@ beforeEach(async () => {
     intervaloMs: 60_000,
   };
 });
-afterEach(async () => rm(dataDir, { recursive: true, force: true }));
+afterEach(async () => {
+  vi.useRealTimers();
+  await rm(dataDir, { recursive: true, force: true });
+});
 
 const lerArquivo = async () =>
   JSON.parse(

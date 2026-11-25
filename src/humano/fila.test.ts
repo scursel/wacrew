@@ -45,9 +45,19 @@ async function fila(gw: ReturnType<typeof gatewayFalso>['gw']) {
   return FilaEnvio.carregar({ dataDir, gateway: gw, conectado: () => true, rng: () => 0.5 });
 }
 
-/** Deixa o I/O real (fs) andar entre os timers falsos. */
+/** setTimeout de verdade, guardado antes de o vi.useFakeTimers trocar o global. */
+const setTimeoutReal = globalThis.setTimeout;
+const esperaReal = (ms: number) => new Promise((r) => setTimeoutReal(r, ms));
+
+/**
+ * Deixa o I/O real (fs) andar entre os timers falsos. Só `setImmediate` não basta com a suíte
+ * inteira rodando em paralelo: a leitura do disco passa das voltas e o teste avança antes dela.
+ */
 async function flush() {
-  for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+  for (let i = 0; i < 5; i++) {
+    await new Promise((r) => setImmediate(r));
+    await esperaReal(2);
+  }
 }
 async function avancar(ms: number) {
   let restante = ms;
