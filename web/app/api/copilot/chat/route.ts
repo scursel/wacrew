@@ -55,8 +55,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "copilot_disabled" }, { status: 403 });
   }
 
-  // Provedor resolvido por env (OpenRouter/Anthropic/local). Key fica server-side.
-  const provider = resolveProvider();
+  // Provedor resolvido por env + escolha na tela de modelos de IA. Key fica server-side.
+  const provider = await resolveProvider();
   if (!provider) {
     return NextResponse.json({ error: "no_provider" }, { status: 503 });
   }

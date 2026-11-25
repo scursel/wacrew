@@ -65,7 +65,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "copilot_disabled" }, { status: 403 });
   }
 
-  const provider = resolveProvider();
+  const provider = await resolveProvider();
   if (!provider) {
     return NextResponse.json({ error: "no_provider" }, { status: 503 });
   }

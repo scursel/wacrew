@@ -12,6 +12,12 @@ vi.mock('../data-source', () => ({
   dsListGroups: async () => [],
 }));
 
+// Escolha da tela de modelos de IA; null = padrão (OpenRouter + env).
+const escolha = vi.hoisted(() => ({ destino: null as unknown }));
+vi.mock('@/lib/ia/provedor', () => ({
+  resolverIA: async (_funcao: string, padrao: object) => escolha.destino ?? { via: 'padrao', ...padrao },
+}));
+
 let tmp: string;
 let mod: typeof import('./classificar-departamento');
 let dep: typeof import('./departamentos');
@@ -29,6 +35,7 @@ afterAll(async () => rm(tmp, { recursive: true, force: true }));
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
+  escolha.destino = null;
   mock.msgs = [];
 });
 
@@ -40,7 +47,7 @@ const deps = [
 const linha = (quem: LinhaHistorico['quem'], texto: string): LinhaHistorico => ({ quem, nome: quem === 'cliente' ? 'Fulano' : quem, hora: '25/11 10:00', texto });
 
 const respostaIA = (conteudo: unknown) =>
-  vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(conteudo) } }] }), { status: 200 }));
+  vi.fn(async (_url: string, _init?: RequestInit) => new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(conteudo) } }] }), { status: 200 }));
 
 describe('lerDepartamento', () => {
   it('devolve o id quando existe na lista', () => {
@@ -127,6 +134,34 @@ describe('classificarPendentes', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect((await atrib.lerAtribuicoes())['grupo-falhou']).toBeUndefined();
   });
+  it('destino 9router: chama o 9router com a chave salva e o combo escolhido', async () => {
+    vi.stubEnv('OPENROUTER_API_KEY', 'chave-openrouter');
+    escolha.destino = { via: '9router', baseUrl: 'http://9r.test/v1', chave: 'chave-9r', modelo: 'leve' };
+    const fetchMock = respostaIA({ departamento: 'suporte' });
+    vi.stubGlobal('fetch', fetchMock);
+    mock.msgs = [{ id: '5', timestamp: '2026-11-25T10:00:00.000Z', fromMe: false, sender: '5511999@s.whatsapp.net', senderName: 'Fulano', type: 'text', text: 'o sistema caiu' }];
+
+    await mod.classificarPendentes(['grupo-9router']);
+
+    expect(fetchMock.mock.calls[0][0]).toBe('http://9r.test/v1/chat/completions');
+    expect(fetchMock.mock.calls[0][1]?.headers).toMatchObject({ Authorization: 'Bearer chave-9r' });
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body)).model).toBe('leve');
+    expect((await atrib.lerAtribuicoes())['grupo-9router']).toMatchObject({ departamento: 'suporte', origemDepartamento: 'ia' });
+  });
+
+  it('com chave do 9router e sem OPENROUTER_API_KEY, classifica pelo 9router (a guarda olha o destino)', async () => {
+    vi.stubEnv('OPENROUTER_API_KEY', '');
+    escolha.destino = { via: '9router', baseUrl: 'http://9r.test/v1', chave: 'chave-9r', modelo: 'leve' };
+    const fetchMock = respostaIA({ departamento: 'financeiro' });
+    vi.stubGlobal('fetch', fetchMock);
+    mock.msgs = [{ id: '6', timestamp: '2026-11-25T10:00:00.000Z', fromMe: false, sender: '5511999@s.whatsapp.net', senderName: 'Fulano', type: 'text', text: 'preciso do boleto' }];
+
+    await mod.classificarPendentes(['grupo-so-9router']);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect((await atrib.lerAtribuicoes())['grupo-so-9router']).toMatchObject({ departamento: 'financeiro' });
+  });
+
   it('duas montagens da fila ao mesmo tempo não classificam a mesma conversa duas vezes (nem além do 1º lote)', async () => {
     vi.stubEnv('OPENROUTER_API_KEY', 'chave-teste');
     let liberar: () => void = () => {};

@@ -1,10 +1,23 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { avaliarPostura, type LinhaHistorico, lerVeredito, precisaAvaliar } from "./postura";
+
+// Escolha da tela de modelos de IA; null = padrão (OpenRouter + env).
+const escolha = vi.hoisted(() => ({ destino: null as unknown }));
+vi.mock("@/lib/ia/provedor", () => ({
+  resolverIA: async (_funcao: string, padrao: object) => escolha.destino ?? { via: "padrao", ...padrao },
+}));
+
+afterEach(() => {
+  escolha.destino = null;
+});
 
 const l = (quem: LinhaHistorico["quem"], texto: string): LinhaHistorico => ({ quem, nome: quem === "cliente" ? "Fulano" : quem, hora: "15/10 15:00", texto });
 
 const respostaOpenRouter = (conteudo: unknown) =>
   (async () => new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(conteudo) } }] }), { status: 200 })) as unknown as typeof fetch;
+
+/** Mock de fetch com a assinatura inteira, pra inspecionar URL/headers/body. */
+const fetchMockado = (impl: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>) => vi.fn(impl);
 
 describe("precisaAvaliar", () => {
   it("avalia quando o cliente falou depois da minha última", () => {
@@ -71,5 +84,39 @@ describe("avaliarPostura", () => {
     const r = await avaliarPostura({ historico, baloes: ["entendi sim"], chave: "" });
     if (antes !== undefined) process.env.OPENROUTER_API_KEY = antes;
     expect(r.avaliado).toBe(false);
+  });
+
+  it("destino 9router: chama o 9router com a chave salva e o combo escolhido", async () => {
+    escolha.destino = { via: "9router", baseUrl: "http://9r.test/v1", chave: "chave-9r", modelo: "leve" };
+    const fetchMock = fetchMockado(async () => new Response(JSON.stringify({ choices: [{ message: { content: "{}" } }] }), { status: 200 }));
+
+    const r = await avaliarPostura({ historico, baloes: ["entendi sim"], fetchFn: fetchMock });
+
+    expect(r.avaliado).toBe(true);
+    expect(fetchMock.mock.calls[0][0]).toBe("http://9r.test/v1/chat/completions");
+    expect(fetchMock.mock.calls[0][1]?.headers).toMatchObject({ Authorization: "Bearer chave-9r" });
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body)).model).toBe("leve");
+  });
+
+  it("erro do 9router diz 9router, não OpenRouter", async () => {
+    escolha.destino = { via: "9router", baseUrl: "http://9r.test/v1", chave: "chave-9r", modelo: "leve" };
+    const r = await avaliarPostura({
+      historico,
+      baloes: ["entendi sim"],
+      fetchFn: (async () => new Response("sem saldo", { status: 402 })) as unknown as typeof fetch,
+    });
+    expect(r.erro).toMatch(/9router/);
+    expect(r.erro).not.toMatch(/OpenRouter/);
+  });
+
+  it("opções explícitas (chave/modelo) continuam valendo acima do 9router", async () => {
+    escolha.destino = { via: "9router", baseUrl: "http://9r.test/v1", chave: "chave-9r", modelo: "leve" };
+    const fetchMock = fetchMockado(async () => new Response(JSON.stringify({ choices: [{ message: { content: "{}" } }] }), { status: 200 }));
+
+    await avaliarPostura({ historico, baloes: ["entendi sim"], chave: "chave-explicita", modelo: "modelo-x", fetchFn: fetchMock });
+
+    expect(fetchMock.mock.calls[0][0]).toBe("https://openrouter.ai/api/v1/chat/completions");
+    expect(fetchMock.mock.calls[0][1]?.headers).toMatchObject({ Authorization: "Bearer chave-explicita" });
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body)).model).toBe("modelo-x");
   });
 });

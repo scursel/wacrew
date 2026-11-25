@@ -3,6 +3,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+// Escolha da tela de modelos de IA; null = padrão (OpenRouter + env).
+const escolha = vi.hoisted(() => ({ destino: null as unknown }));
+vi.mock('@/lib/ia/provedor', () => ({
+  resolverIA: async (_funcao: string, padrao: object) => escolha.destino ?? { via: 'padrao', ...padrao },
+}));
+
 let dataDir: string;
 beforeEach(async () => {
   vi.resetModules();
@@ -10,6 +16,8 @@ beforeEach(async () => {
   vi.stubEnv('WAC_DATA_DIR', dataDir);
   vi.stubEnv('WAC_MCP_REMOTE', '');
   vi.stubEnv('WAC_CLOUD_URL', '');
+  vi.stubEnv('TRANSCRIBE_BACKEND', 'openrouter');
+  escolha.destino = null;
 });
 afterEach(async () => {
   vi.unstubAllEnvs();
@@ -47,6 +55,49 @@ describe('transcribeBatch — cache local', () => {
     // a2 não existe nem local nem na nuvem → falha isolada, não conta como transcrito
     expect(r.textos).toEqual([]);
     expect(r.restantes).toBe(0);
+  });
+});
+
+describe('transcrição na nuvem', () => {
+  async function audioEmDisco(): Promise<string> {
+    await mkdir(join(dataDir, 'g', 'audio'), { recursive: true });
+    const abs = join(dataDir, 'g', 'audio', 'a1.ogg');
+    await writeFile(abs, Buffer.from('OGG-DO-WHATSAPP'));
+    return 'g/audio/a1.ogg';
+  }
+
+  it('destino 9router manda multipart (file, model, language), não o JSON da OpenRouter (Review Focus 4)', async () => {
+    escolha.destino = { via: '9router', baseUrl: 'http://9r.test/v1', chave: 'chave-9r', modelo: 'groq/whisper-large-v3' };
+    const rel = await audioEmDisco();
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ text: '  oi tudo bem  ' }), { status: 200 }));
+    const { transcribe } = await import('./transcribe');
+
+    const texto = await transcribe('g', rel);
+
+    expect(texto).toBe('oi tudo bem');
+    expect(fetchSpy.mock.calls[0][0]).toBe('http://9r.test/v1/audio/transcriptions');
+    expect(fetchSpy.mock.calls[0][1]?.headers).toMatchObject({ Authorization: 'Bearer chave-9r' });
+    const corpo = fetchSpy.mock.calls[0][1]?.body as FormData;
+    expect(corpo).toBeInstanceOf(FormData);
+    expect(corpo.get('model')).toBe('groq/whisper-large-v3');
+    expect(corpo.get('language')).toBe('pt');
+    const arquivo = corpo.get('file') as File;
+    expect(arquivo.name).toBe('audio.ogg');
+    expect(await arquivo.text()).toBe('OGG-DO-WHATSAPP');
+  });
+
+  it('padrão continua JSON com input_audio (Review Focus 4)', async () => {
+    vi.stubEnv('OPENROUTER_API_KEY', 'chave-openrouter');
+    const rel = await audioEmDisco();
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ text: 'ok' }), { status: 200 }));
+    const { transcribe } = await import('./transcribe');
+
+    await transcribe('g', rel);
+
+    expect(fetchSpy.mock.calls[0][0]).toBe('https://openrouter.ai/api/v1/audio/transcriptions');
+    const corpo = JSON.parse(String(fetchSpy.mock.calls[0][1]?.body));
+    expect(corpo.input_audio).toEqual({ data: Buffer.from('OGG-DO-WHATSAPP').toString('base64'), format: 'ogg' });
+    expect(corpo.model).toBe('elevenlabs/scribe-v2');
   });
 });
 

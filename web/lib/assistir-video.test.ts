@@ -12,6 +12,16 @@ import {
   montarPrompt,
 } from './assistir-video';
 
+// Escolha da tela de modelos de IA; null = padrão (OpenRouter + env).
+const escolha = vi.hoisted(() => ({ destino: null as unknown }));
+vi.mock('@/lib/ia/provedor', () => ({
+  resolverIA: async (_funcao: string, padrao: object) => escolha.destino ?? { via: 'padrao', ...padrao },
+}));
+
+afterEach(() => {
+  escolha.destino = null;
+});
+
 describe('ehYoutube', () => {
   it('reconhece watch, shorts, youtu.be e live', () => {
     expect(ehYoutube('https://www.youtube.com/watch?v=jNQXAC9IVRw')).toBe(true);
@@ -144,5 +154,22 @@ describe('assistirVideo', () => {
 
   it('exige url ou arquivo', async () => {
     await expect(assistirVideo({ chave: 'k' })).rejects.toThrow(/url ou arquivo/);
+  });
+
+  it('destino 9router: chama o 9router com a chave salva e o combo escolhido', async () => {
+    escolha.destino = { via: '9router', baseUrl: 'http://9r.test/v1', chave: 'chave-9r', modelo: 'leve' };
+    const fetchFn = vi.fn().mockResolvedValue(respostaOk('00:01 elefantes'));
+
+    const r = await assistirVideo({ url: 'https://youtu.be/jNQXAC9IVRw', fetchFn });
+
+    expect(fetchFn.mock.calls[0][0]).toBe('http://9r.test/v1/chat/completions');
+    expect(fetchFn.mock.calls[0][1].headers.Authorization).toBe('Bearer chave-9r');
+    expect(JSON.parse(fetchFn.mock.calls[0][1].body).model).toBe('leve');
+    expect(r.modelo).toBe('leve');
+  });
+
+  it('sem chave do 9router e sem env: falha dizendo qual provedor falta', async () => {
+    escolha.destino = { via: '9router', baseUrl: 'http://9r.test/v1', chave: '', modelo: 'leve' };
+    await expect(assistirVideo({ url: 'https://youtu.be/x' })).rejects.toThrow(/chave do 9router/);
   });
 });

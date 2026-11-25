@@ -7,12 +7,13 @@ import { cloudPost, mcpRemote } from "./cloud";
 import { ensureLocalMedia, isMediaLocal } from "./cloud-media";
 import { readSettings } from "./config";
 import { transcriptPathFor } from "./data";
+import { resolverIA } from "./ia/provedor";
 import { binPath } from "./paths";
 import { anotarSaude } from "./saude-ia";
 
 const MLX_BIN = process.env.WAC_MLX_WHISPER ?? "mlx_whisper";
 const SERVICE_URL = `http://127.0.0.1:${process.env.WAC_TRANSCRIBE_PORT ?? "4320"}`;
-const OPENROUTER_STT_URL = "https://openrouter.ai/api/v1/audio/transcriptions";
+const BASE_OPENROUTER = "https://openrouter.ai/api/v1";
 const OR_MODEL = process.env.TRANSCRIBE_OPENROUTER_MODEL ?? "elevenlabs/scribe-v2";
 
 type Backend = "mlx" | "openrouter";
@@ -29,19 +30,51 @@ function pickBackend(): Backend {
 }
 
 /**
- * Transcrição na nuvem via OpenRouter STT (endpoint dedicado). Aceita o `.ogg`
- * do WhatsApp direto — sem conversão. Reusa a OPENROUTER_API_KEY do copiloto.
+ * Transcrição na nuvem (OpenRouter STT ou 9router). Aceita o `.ogg` do WhatsApp
+ * direto — sem conversão. Sem escolha na tela, mantém o JSON da OpenRouter;
+ * com o 9router, manda multipart (`file`, `model`, `language`).
  */
-async function viaOpenRouter(absPath: string, language: string): Promise<string> {
-  const key = process.env.OPENROUTER_API_KEY;
-  if (!key) throw new Error("OPENROUTER_API_KEY ausente — necessária p/ transcrição na nuvem.");
+async function viaNuvem(absPath: string, language: string): Promise<string> {
+  const destino = await resolverIA("transcricao", {
+    baseUrl: BASE_OPENROUTER,
+    chave: (process.env.OPENROUTER_API_KEY ?? "").trim(),
+    modelo: OR_MODEL,
+  });
+  if (!destino.chave.trim()) {
+    throw new Error(
+      destino.via === "9router"
+        ? "chave do 9router ausente — necessária p/ transcrição na nuvem."
+        : "OPENROUTER_API_KEY ausente — necessária p/ transcrição na nuvem.",
+    );
+  }
+
+  if (destino.via === "9router") {
+    const buf = await readFile(absPath);
+    const format = (extname(absPath).slice(1) || "ogg").toLowerCase();
+    const form = new FormData();
+    form.append("file", new Blob([buf]), `audio.${format}`);
+    form.append("model", destino.modelo);
+    if (language && language !== "auto") form.append("language", language);
+    const res = await fetch(`${destino.baseUrl}/audio/transcriptions`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${destino.chave}` },
+      body: form,
+    });
+    const data = (await res.json()) as { text?: string; error?: { message?: string } | string };
+    if (!res.ok || typeof data.text !== "string") {
+      const msg = typeof data.error === "string" ? data.error : data.error?.message;
+      throw new Error(msg ?? `9router STT falhou (HTTP ${res.status}).`);
+    }
+    return data.text.trim();
+  }
+
   const buf = await readFile(absPath);
   const format = (extname(absPath).slice(1) || "ogg").toLowerCase();
-  const res = await fetch(OPENROUTER_STT_URL, {
+  const res = await fetch(`${BASE_OPENROUTER}/audio/transcriptions`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    headers: { Authorization: `Bearer ${destino.chave}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: OR_MODEL,
+      model: destino.modelo,
       input_audio: { data: buf.toString("base64"), format },
       ...(language && language !== "auto" ? { language } : {}),
     }),
@@ -118,7 +151,7 @@ function viaCli(mediaAbsPath: string, model: string, language: string): Promise<
 async function runTranscription(absPath: string, model: string, language: string): Promise<string> {
   if (pickBackend() === "openrouter") {
     try {
-      const texto = await viaOpenRouter(absPath, language);
+      const texto = await viaNuvem(absPath, language);
       await anotarSaude("transcricao", null);
       return texto;
     } catch (err) {

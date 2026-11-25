@@ -2,6 +2,7 @@ import { dsContacts, dsGroupMessages, dsListGroups } from '../data-source';
 import { fundirMensagens, slugsIrmaosDeDm } from '../dm-irmaos';
 import { historicoDaConversa, type LinhaHistorico, MODELO_PADRAO } from '../estilo/postura';
 import type { MessageView } from '../data';
+import { type DestinoIA, resolverIA } from '../ia/provedor';
 import { lerAtribuicoes, registrar } from './atribuicoes';
 import { type Departamento, lerDepartamentos } from './departamentos';
 
@@ -11,7 +12,7 @@ import { type Departamento, lerDepartamentos } from './departamentos';
  * ausência da IA nunca bloqueia nada: a conversa só fica sem departamento.
  */
 
-const ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
+const BASE_OPENROUTER = 'https://openrouter.ai/api/v1';
 const N_HISTORICO = 30;
 const MAX_PARALELO = 3;
 const TIMEOUT_MS = 20_000;
@@ -67,18 +68,18 @@ async function historicoDo(slug: string): Promise<LinhaHistorico[]> {
 }
 
 /** `slug` já está em `emCurso` (marcado por `classificarPendentes`); sai dele no fim. */
-async function classificarUm(slug: string, deps: Departamento[], chave: string): Promise<void> {
+async function classificarUm(slug: string, deps: Departamento[], destino: DestinoIA): Promise<void> {
   try {
     const historico = await historicoDo(slug);
     if (!historico.length) {
       await registrar(slug, { tipo: 'sugestao', departamento: null });
       return;
     }
-    const modelo = process.env.WAC_DEPARTAMENTO_MODEL?.trim() || MODELO_PADRAO;
-    const res = await fetch(ENDPOINT, {
+    const endpoint = `${destino.via === '9router' ? destino.baseUrl : BASE_OPENROUTER}/chat/completions`;
+    const res = await fetch(endpoint, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${chave}`, 'Content-Type': 'application/json', 'X-Title': 'whatsapp-collector departamento' },
-      body: JSON.stringify(montarPedidoDepartamento(historico, deps, modelo)),
+      headers: { Authorization: `Bearer ${destino.chave}`, 'Content-Type': 'application/json', 'X-Title': 'whatsapp-collector departamento' },
+      body: JSON.stringify(montarPedidoDepartamento(historico, deps, destino.modelo)),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     if (!res.ok) {
@@ -99,8 +100,12 @@ async function classificarUm(slug: string, deps: Departamento[], chave: string):
 
 /** Classifica as conversas em espera que ainda não têm departamento nem foram tentadas. Não lança. */
 export async function classificarPendentes(slugs: string[]): Promise<void> {
-  const chave = (process.env.OPENROUTER_API_KEY ?? '').trim();
-  if (!chave) return;
+  const destino = await resolverIA('departamento', {
+    baseUrl: BASE_OPENROUTER,
+    chave: (process.env.OPENROUTER_API_KEY ?? '').trim(),
+    modelo: process.env.WAC_DEPARTAMENTO_MODEL?.trim() || MODELO_PADRAO,
+  });
+  if (!destino.chave.trim()) return;
   const deps = await lerDepartamentos();
   if (!deps.length) return;
   const atribuicoes = await lerAtribuicoes();
@@ -114,6 +119,6 @@ export async function classificarPendentes(slugs: string[]): Promise<void> {
   // que chegue enquanto o 1º lote espera a IA não pega as mesmas conversas.
   for (const s of fila) emCurso.add(s);
   for (let i = 0; i < fila.length; i += MAX_PARALELO) {
-    await Promise.all(fila.slice(i, i + MAX_PARALELO).map((s) => classificarUm(s, deps, chave)));
+    await Promise.all(fila.slice(i, i + MAX_PARALELO).map((s) => classificarUm(s, deps, destino)));
   }
 }
