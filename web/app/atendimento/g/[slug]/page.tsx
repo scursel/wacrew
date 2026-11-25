@@ -7,7 +7,7 @@ import { irmaosLiberados } from "@/lib/equipe/acesso";
 import { janelaDaConversa, totalDaConversa } from "@/lib/equipe/conversa";
 import { listaDaPagina, paginaDoAtendente } from "@/lib/equipe/pagina";
 import { dadosDoPainel } from "@/lib/painel-cliente";
-import { ultimoAtendimento } from "@/lib/ultimo-atendimento";
+import { estaResolvida, ultimoAtendimento } from "@/lib/ultimo-atendimento";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +46,7 @@ export default async function AtendimentoChat({ params }: { params: Promise<{ sl
       painel={painel}
       agora={Date.now()}
       atribuicao={atribuicao}
+      resolvida={await estaResolvida(irmaos, undefined, registros)}
     />
   );
 }

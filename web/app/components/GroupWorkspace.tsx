@@ -34,6 +34,7 @@ export function GroupWorkspace({
   agora,
   donoLogin = null,
   atribuicao,
+  resolvida = false,
 }: {
   slug: string;
   groupName: string;
@@ -48,6 +49,8 @@ export function GroupWorkspace({
   donoLogin?: string | null;
   /** Responsável e departamento da conversa, e quem pode receber (ver `atribuicaoDaConversaAberta`). */
   atribuicao: DadosAtribuicaoConversa;
+  /** Marcada como resolvida e o cliente não escreveu depois (ver `estaResolvida`): botão verde. */
+  resolvida?: boolean;
 }) {
   const rotas = useRotas();
   const router = useRouter();
@@ -128,6 +131,9 @@ export function GroupWorkspace({
     }
   }, [resolucao, slug, router, rotas]);
 
+  // Verde já no clique (antes de a página voltar do servidor) e enquanto continuar resolvida.
+  const verde = resolucao !== "erro" && (resolvida || resolucao === "feita");
+
   useEffect(() => {
     if (resolucao !== "feita" && resolucao !== "erro") return;
     const t = setTimeout(() => setResolucao("parada"), 2500);
@@ -187,13 +193,18 @@ export function GroupWorkspace({
       )}
       <Button
         size="sm"
+        variant={verde ? "sucesso" : "atencao"}
         onClick={resolver}
         loading={resolucao === "salvando"}
-        title="Marcar como resolvida e soltar o responsável (E)"
+        title={
+          verde
+            ? "Resolvida. Volta para amarelo quando o cliente escrever de novo (E marca de novo)"
+            : "Marcar como resolvida e soltar o responsável (E)"
+        }
         className="max-[860px]:h-10"
       >
         {resolucao !== "salvando" && <Icone nome="check" tamanho={15} />}
-        {resolucao === "feita" ? "Resolvida" : resolucao === "erro" ? "Tente de novo" : "Resolver"}
+        {resolucao === "erro" ? "Tente de novo" : verde ? "Resolvida" : "Resolver"}
       </Button>
       <IconButton
         size="sm"

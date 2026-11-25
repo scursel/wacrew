@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { MessageRecord } from './data';
-import { ultimoAtendimento } from './ultimo-atendimento';
+import { estaResolvida, ultimoAtendimento } from './ultimo-atendimento';
 
 vi.mock('./contacts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./contacts')>()),
@@ -55,5 +55,27 @@ describe('observação do último atendimento', () => {
       ['chat', 'irmao'], { ...corte, irmao: hora('22'), restrito: hora('25') },
       [msg('antiga', '19', { fromMe: true }), msg('retorno', '23')],
     )).toEqual({ resolvidoEm: hora('22'), reabertoPorMensagem: 'retorno', atendente: null });
+  });
+});
+
+describe('conversa resolvida (cor do botão Resolver)', () => {
+  it('marcada como resolvida e sem mensagem do cliente depois: resolvida', async () => {
+    const antes = msg('antes', '10');
+    const resposta = msg('resposta', '25', { fromMe: true });
+    const daEquipe = msg('equipe', '26', { sender: '5511888888888@s.whatsapp.net' });
+    expect(await estaResolvida(['chat'], corte, [antes, resposta, daEquipe])).toBe(true);
+  });
+
+  it('cliente escreveu depois do corte: volta a não estar resolvida', async () => {
+    expect(await estaResolvida(['chat'], corte, [msg('antes', '10'), msg('retorno', '22')])).toBe(false);
+  });
+
+  it('nunca marcada como resolvida: não está resolvida', async () => {
+    expect(await estaResolvida(['chat'], {}, [msg('antes', '10')])).toBe(false);
+  });
+
+  it('DM partida: vale o corte mais recente entre os lados', async () => {
+    const cortes = { 'dm-a': hora('20'), 'dm-b': hora('30') };
+    expect(await estaResolvida(['dm-a', 'dm-b'], cortes, [msg('entre', '25')])).toBe(true);
   });
 });

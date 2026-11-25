@@ -5,7 +5,7 @@ import { conversationName, readGroupMessages, readGroupRecords } from "@/lib/dat
 import { DONO } from "@/lib/equipe/atribuicoes";
 import { dadosDoPainel } from "@/lib/painel-cliente";
 import { readTriage } from "@/lib/triage";
-import { ultimoAtendimento } from "@/lib/ultimo-atendimento";
+import { estaResolvida, ultimoAtendimento } from "@/lib/ultimo-atendimento";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +45,7 @@ export default async function GroupPage({
       agora={Date.now()}
       donoLogin={process.env.PANEL_USER?.trim() || null}
       atribuicao={atribuicao}
+      resolvida={await estaResolvida([slug], triage.resolved, registros)}
     />
   );
 }

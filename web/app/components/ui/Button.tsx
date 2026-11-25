@@ -4,7 +4,7 @@ import type { ButtonHTMLAttributes, Ref } from "react";
 import { cn } from "./cn";
 import { Spinner } from "./Spinner";
 
-type Variant = "primary" | "ghost" | "subtle" | "danger";
+type Variant = "primary" | "ghost" | "subtle" | "danger" | "sucesso" | "atencao";
 type Size = "sm" | "md";
 
 /**
@@ -13,12 +13,16 @@ type Size = "sm" | "md";
  *   subtle:  borda forte e fundo do card. Ação comum.
  *   ghost:   sem borda nem fundo até o hover. Ação de apoio.
  *   danger:  fundo vermelho claro. Ação destrutiva.
+ *   sucesso: fundo verde claro. Estado concluído (ex.: conversa resolvida).
+ *   atencao: fundo amarelo claro. Pendência a fazer (ex.: conversa por resolver).
  */
 const VARIANTS: Record<Variant, string> = {
   primary: "border border-ink bg-ink text-on-ink hover:bg-ink/85 active:translate-y-px",
   subtle: "border border-line-2 bg-surface text-fg hover:border-fg-mute hover:bg-elevated active:translate-y-px",
   ghost: "border border-transparent bg-transparent text-fg-dim hover:bg-elevated hover:text-fg active:translate-y-px",
   danger: "border border-transparent bg-danger-bg text-danger hover:border-danger/40 active:translate-y-px",
+  sucesso: "border border-transparent bg-ok-bg text-ok hover:border-ok/40 active:translate-y-px",
+  atencao: "border border-transparent bg-warn-bg text-warn hover:border-warn/40 active:translate-y-px",
 };
 
 const SIZES: Record<Size, string> = {
