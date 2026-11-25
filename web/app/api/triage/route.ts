@@ -35,7 +35,10 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "value deve ser string" }, { status: 400 });
       }
       await setResolved(slug, value);
-      await registrar((await canonicoGlobal())(slug), { tipo: "resolver", por: DONO });
+      // Resolvido já foi gravado: falha ao soltar o responsável só loga.
+      await registrar((await canonicoGlobal())(slug), { tipo: "resolver", por: DONO }).catch((e) =>
+        console.error("[atribuição] não foi possível soltar o responsável", e),
+      );
       break;
     case "muted":
       if (typeof value !== "boolean") {
