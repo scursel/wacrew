@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
  * Não expõe a key — só o rótulo do provedor e os modelos resolvidos.
  */
 export async function GET() {
-  const p = resolveProvider();
+  const p = await resolveProvider();
   if (!p) return NextResponse.json({ ready: false });
   return NextResponse.json({
     ready: true,

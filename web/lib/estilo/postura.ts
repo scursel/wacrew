@@ -18,6 +18,7 @@
 import type { Contacts } from "../contacts";
 import { numberFromJid, roleOf } from "../contacts";
 import type { MessageView } from "../data";
+import { resolverIA } from "../ia/provedor";
 import type { Hit } from "./repeticao";
 
 export type RegraPostura = "entendimento" | "concordancia" | "conserto" | "cobranca";
@@ -46,7 +47,7 @@ export interface OpcoesPostura {
   timeoutMs?: number;
 }
 
-const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
+const BASE_OPENROUTER = "https://openrouter.ai/api/v1";
 export const MODELO_PADRAO = "google/gemini-3.8-flash";
 const N_HISTORICO = 60;
 const PESO = 4;
@@ -173,18 +174,33 @@ export async function avaliarPostura(o: OpcoesPostura): Promise<ResultadoPostura
   const vazio = { hits: [], alertas: [] };
   const baloes = o.baloes?.map((b) => b.trim()).filter(Boolean);
   if (!o.historico.length || !precisaAvaliar(o.historico, baloes)) return { ...vazio, avaliado: false };
-  const chave = (o.chave ?? process.env.OPENROUTER_API_KEY ?? "").trim();
-  if (!chave) return { ...vazio, avaliado: false, erro: "OPENROUTER_API_KEY ausente: postura não avaliada" };
-  const modelo = o.modelo ?? process.env.WAC_POSTURA_MODEL ?? MODELO_PADRAO;
+  const destino = await resolverIA("postura", {
+    baseUrl: BASE_OPENROUTER,
+    chave: (process.env.OPENROUTER_API_KEY ?? "").trim(),
+    modelo: process.env.WAC_POSTURA_MODEL ?? MODELO_PADRAO,
+  });
+  // Chave explícita mantém o contrato antigo: OpenRouter, com essa chave.
+  const via = o.chave !== undefined ? "padrao" : destino.via;
+  const chave = (o.chave ?? destino.chave).trim();
+  if (!chave) {
+    return {
+      ...vazio,
+      avaliado: false,
+      erro: via === "9router" ? "9router sem chave: postura não avaliada" : "OPENROUTER_API_KEY ausente: postura não avaliada",
+    };
+  }
+  const modelo = o.modelo ?? (via === "9router" ? destino.modelo : process.env.WAC_POSTURA_MODEL ?? MODELO_PADRAO);
+  const endpoint = via === "9router" ? `${destino.baseUrl}/chat/completions` : `${BASE_OPENROUTER}/chat/completions`;
+  const nome = via === "9router" ? "9router" : "OpenRouter";
   try {
-    const res = await (o.fetchFn ?? fetch)(ENDPOINT, {
+    const res = await (o.fetchFn ?? fetch)(endpoint, {
       method: "POST",
       headers: { Authorization: `Bearer ${chave}`, "Content-Type": "application/json", "X-Title": "whatsapp-collector postura" },
       body: JSON.stringify(montarPedido(o.historico, baloes, modelo)),
       signal: AbortSignal.timeout(o.timeoutMs ?? 40_000),
     });
     const corpo = await res.text();
-    if (!res.ok) return { ...vazio, avaliado: false, erro: `OpenRouter HTTP ${res.status}: ${corpo.slice(0, 160)}` };
+    if (!res.ok) return { ...vazio, avaliado: false, erro: `${nome} HTTP ${res.status}: ${corpo.slice(0, 160)}` };
     const conteudo = JSON.parse(corpo)?.choices?.[0]?.message?.content ?? "";
     const json = JSON.parse(String(conteudo).replace(/^```(?:json)?\s*|\s*```$/g, ""));
     return { ...lerVeredito(json, Boolean(baloes?.length)), avaliado: true };

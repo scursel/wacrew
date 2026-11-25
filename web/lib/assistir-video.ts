@@ -9,10 +9,11 @@ import { mkdtemp, readdir, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { extname, join } from 'node:path';
 import { promisify } from 'node:util';
+import { resolverIA } from './ia/provedor';
 
 const pexec = promisify(execFile);
 
-const ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
+const BASE_OPENROUTER = 'https://openrouter.ai/api/v1';
 const MODELO_PADRAO = 'gemini-4-argon';
 /** Corpo da requisição precisa caber; acima disso o vídeo é comprimido. */
 export const LIMITE_BYTES = 18_000_000;
@@ -70,7 +71,7 @@ export function lerResposta(json: unknown): { texto: string; tokens: number | nu
   };
 }
 
-export function erroOpenRouter(status: number, corpo: string): string {
+export function erroOpenRouter(status: number, corpo: string, provedor = 'OpenRouter'): string {
   let detalhe = corpo;
   try {
     detalhe = (JSON.parse(corpo) as { error?: { message?: string } }).error?.message ?? corpo;
@@ -78,11 +79,12 @@ export function erroOpenRouter(status: number, corpo: string): string {
     // corpo não é JSON: usa como veio
   }
   detalhe = detalhe.slice(0, 300);
-  if (status === 402) return `sem saldo na OpenRouter (HTTP 402): coloque crédito em openrouter.ai/settings/credits. ${detalhe}`;
-  if (status === 401 || status === 403) return `OPENROUTER_API_KEY recusada (HTTP ${status}): confira a chave. ${detalhe}`;
-  if (status === 429) return `limite de uso da OpenRouter (HTTP 429): espere um pouco. ${detalhe}`;
-  if (status >= 500) return `OpenRouter ou Gemini instável (HTTP ${status}): tente de novo em instantes. ${detalhe}`;
-  return `OpenRouter recusou o vídeo (HTTP ${status}): ${detalhe}`;
+  const nome = provedor === '9router' ? '9router' : 'OpenRouter';
+  if (status === 402) return `sem saldo na ${nome} (HTTP 402): ${nome === '9router' ? 'confira o crédito no 9router' : 'coloque crédito em openrouter.ai/settings/credits'}. ${detalhe}`;
+  if (status === 401 || status === 403) return `${nome === '9router' ? 'chave do 9router' : 'OPENROUTER_API_KEY'} recusada (HTTP ${status}): confira a chave. ${detalhe}`;
+  if (status === 429) return `limite de uso ${nome === '9router' ? 'do 9router' : 'da OpenRouter'} (HTTP 429): espere um pouco. ${detalhe}`;
+  if (status >= 500) return `${nome} ou Gemini instável (HTTP ${status}): tente de novo em instantes. ${detalhe}`;
+  return `${nome} recusou o vídeo (HTTP ${status}): ${detalhe}`;
 }
 
 async function duracaoPorFfprobe(arquivo: string): Promise<number | null> {
@@ -153,10 +155,25 @@ export interface AssistirResultado {
 }
 
 export async function assistirVideo(o: AssistirOpcoes): Promise<AssistirResultado> {
-  const chave = (o.chave ?? process.env.OPENROUTER_API_KEY ?? '').trim();
-  if (!chave) throw new Error('OPENROUTER_API_KEY ausente: adicione no arquivo de variáveis da raiz do repositório');
+  const destino = await resolverIA('video', {
+    baseUrl: BASE_OPENROUTER,
+    chave: (process.env.OPENROUTER_API_KEY ?? '').trim(),
+    modelo: modeloDoVideo(),
+  });
+  // Chave/modelo explícitos mantêm o contrato antigo: OpenRouter.
+  const via = o.chave !== undefined ? 'padrao' : destino.via;
+  const chave = (o.chave ?? destino.chave).trim();
+  if (!chave) {
+    throw new Error(
+      via === '9router'
+        ? 'chave do 9router ausente: salve a chave na tela de modelos de IA'
+        : 'OPENROUTER_API_KEY ausente: adicione no arquivo de variáveis da raiz do repositório',
+    );
+  }
   if (!o.url && !o.arquivo) throw new Error('informe url ou arquivo do vídeo');
-  const modelo = modeloDoVideo(o.modelo);
+  const modelo = o.modelo ? modeloDoVideo(o.modelo) : via === "9router" ? destino.modelo : modeloDoVideo();
+  const endpoint = `${via === '9router' ? destino.baseUrl : BASE_OPENROUTER}/chat/completions`;
+  const nome = via === '9router' ? '9router' : 'OpenRouter';
   const fetchFn = o.fetchFn ?? fetch;
   const medir = o.medirDuracao ?? duracaoPorFfprobe;
   const maxS = o.duracaoMaxS ?? DURACAO_MAX_S;
@@ -188,14 +205,14 @@ export async function assistirVideo(o: AssistirOpcoes): Promise<AssistirResultad
       videoUrl = `data:${mime};base64,${(await readFile(pronto)).toString('base64')}`;
     }
 
-    const res = await fetchFn(ENDPOINT, {
+    const res = await fetchFn(endpoint, {
       method: 'POST',
       headers: { Authorization: `Bearer ${chave}`, 'Content-Type': 'application/json', 'X-Title': 'whatsapp-collector assistir_video' },
       body: JSON.stringify(montarPedido(videoUrl, o.pergunta, modelo)),
       signal: AbortSignal.timeout(o.timeoutMs ?? 300_000),
     });
     const corpo = await res.text();
-    if (!res.ok) throw new Error(erroOpenRouter(res.status, corpo));
+    if (!res.ok) throw new Error(erroOpenRouter(res.status, corpo, nome));
     const r = lerResposta(JSON.parse(corpo));
     return { ...r, modelo, fonte };
   } finally {
