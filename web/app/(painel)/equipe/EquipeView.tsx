@@ -113,7 +113,6 @@ export function EquipeView() {
             <ContasCard
               usuarios={dados ? usuarios : null}
               selecionado={criando ? null : selecionado}
-              comRascunho={[]}
               aoEscolher={escolher}
               aoCriar={abrirCriacao}
             />

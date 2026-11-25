@@ -62,7 +62,7 @@ export function NovaContaCard({
         }
       >
         <p className="max-w-[64ch] text-[13.5px] leading-relaxed text-fg-dim">
-          Cada pessoa da equipe tem login e senha próprios e só enxerga as conversas que você liberar, sem notas, contrato nem
+          Cada pessoa da equipe tem login e senha próprios e vê todas as conversas da conta, sem notas, contrato nem
           copiloto. O que ela envia sai como você, passando pelos mesmos bloqueios de texto.
         </p>
         <div className="mt-4 grid grid-cols-2 gap-4 max-[860px]:grid-cols-1">
