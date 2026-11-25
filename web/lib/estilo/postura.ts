@@ -47,7 +47,7 @@ export interface OpcoesPostura {
 }
 
 const ENDPOINT = "https://openrouter.ai/api/v1/chat/completions";
-const MODELO_PADRAO = "google/gemini-3.8-flash";
+export const MODELO_PADRAO = "google/gemini-3.8-flash";
 const N_HISTORICO = 60;
 const PESO = 4;
 
