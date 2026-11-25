@@ -446,6 +446,7 @@ export function Timeline({
           tipo={cabecalho.tipo}
           fotoUrl={cabecalho.avatarPath ? rotas.midia(cabecalho.avatarPath) : null}
           tamanho="md"
+          ampliavel
         />
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-[16px] font-semibold leading-tight tracking-[-0.01em] text-fg">{groupName}</h2>

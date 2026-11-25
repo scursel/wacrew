@@ -22,7 +22,7 @@ export function ContextoCard({ dados, onEtiquetas }: { dados: PainelCliente; onE
   return (
     <div className="flex flex-col gap-3 border-b border-line p-5">
       <div className="flex items-center gap-3">
-        <Avatar nome={dados.nome} tipo={dados.tipo} fotoUrl={dados.avatarPath ? rotas.midia(dados.avatarPath) : null} tamanho="md" />
+        <Avatar nome={dados.nome} tipo={dados.tipo} fotoUrl={dados.avatarPath ? rotas.midia(dados.avatarPath) : null} tamanho="md" ampliavel />
         <div className="min-w-0">
           <b className="block truncate text-[15px] font-semibold leading-snug text-fg">{dados.nome}</b>
           <small className="block text-[12.5px] text-fg-faint">{dados.desde ?? (dados.tipo === "dm" ? "conversa direta" : "grupo")}</small>
