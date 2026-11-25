@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { NextResponse } from "next/server";
 import { readGroupRecords } from "@/lib/data";
 import { atendenteDoPedido, exigirChat, irmaosLiberados, respostaDeErro } from "@/lib/equipe/acesso";
+import { assinar, nomeDeQuemEnvia } from "@/lib/equipe/assinatura";
 import { destinoDoSlug } from "@/lib/equipe/destino";
 import { motivoDeRecusa, recentesDaConta, registrosDaConversa } from "@/lib/equipe/envio";
 import { mimeDoNome, nomeSeguro } from "@/lib/nome-arquivo";
@@ -41,12 +42,14 @@ export async function POST(req: Request) {
     const fileName = nomeSeguro(file.name, `arquivo-${randomUUID()}`);
     abs = join(dir, randomUUID());
     await writeFile(abs, Buffer.from(await file.arrayBuffer()));
+    // A revisão rodou na legenda crua; sem legenda, a assinatura vira a legenda.
+    const legenda = assinar(caption, await nomeDeQuemEnvia(a.usuario.login));
     const res = await fetch(`${CONTROL_URL}/send-media`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         jid, kind, path: abs,
-        caption: caption || undefined,
+        caption: legenda,
         fileName: kind === "document" ? fileName : undefined,
         mimetype: file.type || mimeDoNome(fileName),
         ator: "painel", usuario: a.usuario.login,

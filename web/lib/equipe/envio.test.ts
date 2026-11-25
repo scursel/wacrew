@@ -9,6 +9,14 @@ describe('envio do atendente', () => {
     expect(motivoDeRecusa('foi mal, culpa minha', [])).toMatch(/culpa/);
     expect(motivoDeRecusa('Opa, vou ver aqui e já te falo: chega hoje.', [])).toBeNull();
   });
+  it('a assinatura não conta: o histórico compara o texto sem ela', () => {
+    const recentes = recentesDaConta(
+      [{ fromMe: true, timestamp: '2026-10-06T11:50:00Z', text: '*Ana:*\noi' }],
+      AGORA,
+    );
+    expect(recentes).toEqual(['oi']);
+    expect(motivoDeRecusa('oi', recentes)).toMatch(/idêntico/);
+  });
   it('balão idêntico a mensagem da conta nos últimos 30 min é recusado', () => {
     const recentes = recentesDaConta(
       [
