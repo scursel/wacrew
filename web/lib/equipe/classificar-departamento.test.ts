@@ -115,4 +115,16 @@ describe('classificarPendentes', () => {
     expect(fetchMock).not.toHaveBeenCalled();
     expect((await atrib.lerAtribuicoes())['grupo-manual']?.departamento).toBe('suporte');
   });
+  it('falha da IA espera antes de tentar a mesma conversa de novo', async () => {
+    vi.stubEnv('OPENROUTER_API_KEY', 'chave-teste');
+    const fetchMock = vi.fn(async () => new Response('erro', { status: 500 }));
+    vi.stubGlobal('fetch', fetchMock);
+    mock.msgs = [{ id: '3', timestamp: '2026-11-25T10:00:00.000Z', fromMe: false, sender: '5511999@s.whatsapp.net', senderName: 'Fulano', type: 'text', text: 'preciso do boleto' }];
+
+    await mod.classificarPendentes(['grupo-falhou']);
+    await mod.classificarPendentes(['grupo-falhou']);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect((await atrib.lerAtribuicoes())['grupo-falhou']).toBeUndefined();
+  });
 });

@@ -23,6 +23,9 @@ Responda SÓ JSON: {"departamento": "<id>"} ou {"departamento": null}`;
 
 /** Conversas em classificação agora, para uma mesma conversa não disparar duas vezes. */
 const emCurso = new Set<string>();
+/** Falha (HTTP, timeout, JSON) não grava nada: espera este tempo antes de tentar a mesma conversa de novo. */
+const ESPERA_APOS_FALHA_MS = 15 * 60_000;
+const falhouEm = new Map<string, number>();
 
 export function montarPedidoDepartamento(historico: LinhaHistorico[], deps: Departamento[], modelo: string): object {
   const lista = deps.map((d) => `- ${d.id}: ${d.nome}${d.descricao ? ` (${d.descricao})` : ''}`).join('\n');
@@ -78,13 +81,17 @@ async function classificarUm(slug: string, deps: Departamento[], chave: string):
       body: JSON.stringify(montarPedidoDepartamento(historico, deps, modelo)),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
-    if (!res.ok) return;
+    if (!res.ok) {
+      falhouEm.set(slug, Date.now());
+      return;
+    }
     const corpo = (await res.json()) as { choices?: { message?: { content?: unknown } }[] };
     const conteudo = String(corpo?.choices?.[0]?.message?.content ?? '').replace(/^```(?:json)?\s*|\s*```$/g, '');
     const departamento = lerDepartamento(JSON.parse(conteudo), deps);
     await registrar(slug, { tipo: 'sugestao', departamento });
   } catch {
-    // Falha da IA não bloqueia a fila: a conversa segue sem departamento e tenta de novo depois.
+    // Falha da IA não bloqueia a fila: a conversa segue sem departamento e tenta de novo depois da espera.
+    falhouEm.set(slug, Date.now());
   } finally {
     emCurso.delete(slug);
   }
@@ -99,6 +106,8 @@ export async function classificarPendentes(slugs: string[]): Promise<void> {
   const atribuicoes = await lerAtribuicoes();
   const fila = [...new Set(slugs)].filter((s) => {
     const a = atribuicoes[s];
+    const falha = falhouEm.get(s);
+    if (falha !== undefined && Date.now() - falha < ESPERA_APOS_FALHA_MS) return false;
     return !emCurso.has(s) && !a?.departamento && !a?.iaTentouEm;
   });
   for (let i = 0; i < fila.length; i += MAX_PARALELO) {
