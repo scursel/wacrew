@@ -1,3 +1,4 @@
+import { lerNomeDono } from './departamentos';
 import { acharUsuario } from './usuarios';
 
 /**
@@ -20,10 +21,8 @@ export function semAssinatura(texto: string): string {
 }
 
 /** Nome que assina o envio: o dono pelo painel não é conta de `usuarios.json`. */
-export async function nomeDeQuemEnvia(usuario: string, nomeDono?: () => Promise<string>): Promise<string> {
-  if (usuario === process.env.PANEL_USER) {
-    return nomeDono ? await nomeDono() : (process.env.PANEL_USER ?? 'Operador');
-  }
+export async function nomeDeQuemEnvia(usuario: string, nomeDono: () => Promise<string> = lerNomeDono): Promise<string> {
+  if (usuario === process.env.PANEL_USER) return nomeDono();
   const u = await acharUsuario(usuario);
   return u?.nome || usuario;
 }
