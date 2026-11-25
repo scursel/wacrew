@@ -1,6 +1,21 @@
-import { describe, expect, it } from 'vitest';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Contacts } from '../contacts';
-import { chatsEfetivos, ErroHttp, exigirChat, irmaosPermitidos, slugCanonico } from './acesso';
+import { atendentePeloToken, chatsEfetivos, ErroHttp, exigirChat, irmaosPermitidos, slugCanonico } from './acesso';
+import { assinarSessao, chaveDeSessao, novaSessao } from './sessao';
+
+// DATA_DIR sai do import de ../paths: o ambiente precisa estar pronto antes dos imports.
+const dados = await vi.hoisted(async () => {
+  const { mkdtemp } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const tmp = await mkdtemp(join(tmpdir(), 'wa-acesso-'));
+  process.env.WAC_DATA_DIR = join(tmp, 'data');
+  process.env.PANEL_USER = 'dono';
+  process.env.PANEL_PASS = 'segredo-do-dono';
+  return { tmp, data: join(tmp, 'data') };
+});
 
 function contatos(phones: Array<[string, string]>): Contacts {
   return {
@@ -88,5 +103,45 @@ describe('slugCanonico', () => {
   });
   it('grupo é ele mesmo', () => {
     expect(slugCanonico(['grupo-a'], c)).toBe('grupo-a');
+  });
+});
+
+describe('atendentePeloToken: atendente vê todas as conversas existentes', () => {
+  beforeAll(async () => {
+    await mkdir(join(dados.data, 'grupo-a'), { recursive: true });
+    await mkdir(join(dados.data, 'dm-5511999999999'), { recursive: true });
+    await mkdir(join(dados.data, '.equipe'), { recursive: true });
+    await writeFile(
+      join(dados.data, '.equipe', 'usuarios.json'),
+      JSON.stringify([
+        {
+          login: 'ana',
+          nome: 'Ana',
+          senha: 'scrypt$x$y',
+          ativo: true,
+          versao: 1,
+          chats: [],
+          criadoEm: '2026-10-06T12:00:00.000Z',
+          ultimoAcesso: null,
+        },
+      ]),
+    );
+  });
+  afterAll(async () => rm(dados.tmp, { recursive: true, force: true }));
+
+  it('lista de chats vazia no arquivo: enxerga qualquer slug existente e 404 para o inexistente', async () => {
+    const token = assinarSessao(novaSessao('ana', 'atendente', 1), chaveDeSessao()!);
+    const a = await atendentePeloToken(token);
+    expect(a).not.toBeNull();
+    expect(a!.chats).toEqual(new Set(['grupo-a', 'dm-5511999999999']));
+    expect(() => exigirChat(a!, 'grupo-a')).not.toThrow();
+    expect(() => exigirChat(a!, 'dm-5511999999999')).not.toThrow();
+    try {
+      exigirChat(a!, 'nao-existe');
+      throw new Error('devia ter lançado');
+    } catch (e) {
+      expect(e).toBeInstanceOf(ErroHttp);
+      expect((e as ErroHttp).status).toBe(404);
+    }
   });
 });

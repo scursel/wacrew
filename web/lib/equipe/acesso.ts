@@ -54,7 +54,8 @@ export function slugCanonico(irmaos: string[], c: Contacts): string {
   return [...irmaos].sort()[0] ?? '';
 }
 
-async function atendentePeloToken(token: string | undefined): Promise<Atendente | null> {
+/** Atendente vê todas as conversas existentes; `Usuario.chats` fica no arquivo, sem leitura. */
+export async function atendentePeloToken(token: string | undefined): Promise<Atendente | null> {
   const cred = credenciaisDoDono();
   const chave = chaveDeSessao();
   if (!cred || !chave || !token) return null;
@@ -62,11 +63,7 @@ async function atendentePeloToken(token: string | undefined): Promise<Atendente 
   if (!s || s.p !== 'atendente') return null;
   const usuario = await acharUsuario(s.u);
   if (!usuario || !usuario.ativo || usuario.versao !== s.v) return null;
-  const temDm = usuario.chats.some((c) => c.startsWith('dm-'));
-  const chats = temDm
-    ? chatsEfetivos(usuario.chats, await contatosDeIdentidade(), await slugsExistentes())
-    : new Set(usuario.chats);
-  return { usuario, chats };
+  return { usuario, chats: new Set(await slugsExistentes()) };
 }
 
 /**

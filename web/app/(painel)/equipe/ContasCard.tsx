@@ -7,14 +7,11 @@ import type { UsuarioPublico } from "./tipos";
 export function ContasCard({
   usuarios,
   selecionado,
-  comRascunho,
   aoEscolher,
   aoCriar,
 }: {
   usuarios: UsuarioPublico[] | null;
   selecionado: string | null;
-  /** Contas com conversas marcadas e ainda não salvas. */
-  comRascunho: string[];
   aoEscolher: (login: string) => void;
   aoCriar: () => void;
 }) {
@@ -40,14 +37,13 @@ export function ContasCard({
         <div className="py-3">
           <p className="text-[13.5px] font-medium text-fg">Nenhuma conta ainda</p>
           <p className="mt-1 text-[13px] leading-relaxed text-fg-faint">
-            Crie a primeira ao lado. A pessoa entra pelo mesmo link do painel e só vê as conversas que você liberar.
+            Crie a primeira ao lado. A pessoa entra pelo mesmo link do painel e vê todas as conversas da conta.
           </p>
         </div>
       ) : (
         <ul className="-mx-2 flex flex-col gap-0.5">
           {usuarios.map((u) => {
             const atual = u.login === selecionado;
-            const pendente = comRascunho.includes(u.login);
             return (
               <li key={u.login}>
                 <button
@@ -66,16 +62,8 @@ export function ContasCard({
                       <span className={cn("truncate text-[13.5px] font-medium", u.ativo ? "text-fg" : "text-fg-dim")}>{u.nome}</span>
                       {!u.ativo && <Badge>desativada</Badge>}
                     </span>
-                    <span className="mt-0.5 block truncate text-[12.5px] text-fg-faint">
-                      @{u.login} · <span className="font-mono tabular-nums">{u.chats.length}</span>{" "}
-                      {u.chats.length === 1 ? "conversa" : "conversas"}
-                    </span>
+                    <span className="mt-0.5 block truncate text-[12.5px] text-fg-faint">@{u.login}</span>
                   </span>
-                  {pendente && (
-                    <span title="Conversas marcadas e não salvas" className="h-2 w-2 shrink-0 rounded-full bg-warn-mark">
-                      <span className="sr-only">Conversas marcadas e não salvas</span>
-                    </span>
-                  )}
                 </button>
               </li>
             );
