@@ -16,6 +16,7 @@ import { listarDespachos } from './despacho-store';
 import { buildInbox, type InboxItem } from './inbox';
 import { CONTROL_URL, DATA_DIR } from './paths';
 import { type Atribuicao, type Atribuicoes, DONO, lerAtribuicoes } from '@/lib/equipe/atribuicoes';
+import { classificarPendentes } from '@/lib/equipe/classificar-departamento';
 import { type Departamento, departamentosDe, lerDepartamentos, lerNomeDono } from '@/lib/equipe/departamentos';
 import { lerUsuarios } from '@/lib/equipe/usuarios';
 
@@ -127,13 +128,45 @@ async function perguntasPendentes(): Promise<AguardandoOk[]> {
   return out.sort((a, b) => b.desde.localeCompare(a.desde));
 }
 
+/**
+ * Conversa de apoio para uma espera cujo slug (canônico) não está na lista. Sem ela, a espera
+ * não acharia a atribuição, que fica no slug canônico. Não entra em "Paradas" nem muda a espera.
+ */
+function conversaDeApoio(slug: string, nome: string, ctx: ContextoAtribuicao): ConversaFila {
+  return {
+    slug,
+    nome,
+    avatarPath: null,
+    previa: null,
+    ultimaEm: null,
+    naoLidas: 0,
+    fixada: false,
+    silenciada: false,
+    arquivada: false,
+    etiquetas: [],
+    ...atribuicaoDaConversa(slug, ctx),
+  };
+}
+
+/** A lista mais as esperas que não estão nela (ver `conversaDeApoio`). */
+function comEsperasSemConversa(conversas: ConversaFila[], inbox: InboxItem[], ctx: ContextoAtribuicao): ConversaFila[] {
+  const listadas = new Set(conversas.map((c) => c.slug));
+  const apoio = inbox.filter((i) => !listadas.has(i.slug)).map((i) => conversaDeApoio(i.slug, i.groupName, ctx));
+  return apoio.length ? [...conversas, ...apoio] : conversas;
+}
+
 /** Fila do dono: quem espera, as conversas e o que a IA está fazendo. */
 export async function filaDoDono(): Promise<DadosFila> {
   const [inbox, grupos, ia, ctx] = await Promise.all([buildInbox(), conversasDaRequisicao(), iaDaCaixa(), contextoAtribuicao()]);
-  return {
+  const slugsEmEspera = inbox.map((i) => i.slug);
+  const dados: DadosFila = {
     esperando: inbox.map(paraEspera),
     // A lista do dono não agrupa DM partida: cada conversa usa a própria atribuição (slug como está).
-    conversas: grupos.map((g) => paraConversa(g, ctx)),
+    conversas: comEsperasSemConversa(
+      grupos.map((g) => paraConversa(g, ctx)),
+      inbox,
+      ctx,
+    ),
     entregas: ia.entregas,
     aguardandoOk: ia.aguardandoOk,
     eu: DONO,
@@ -142,6 +175,9 @@ export async function filaDoDono(): Promise<DadosFila> {
     meusDepartamentos: ctx.departamentos.map((d) => d.id),
     geradoEm: Date.now(),
   };
+  // A IA classifica em segundo plano: a fila não espera por ela (a função não lança).
+  void classificarPendentes(slugsEmEspera);
+  return dados;
 }
 
 /**
@@ -156,16 +192,46 @@ export async function filaDaEquipe(
   eu: string,
 ): Promise<DadosFila> {
   const [inbox, ctx] = await Promise.all([buildInbox({ slugs: chats, ignorarSilenciados: true, canonicoDe }), contextoAtribuicao()]);
-  return {
+  const slugsEmEspera = inbox.map((i) => i.slug);
+  const dados: DadosFila = {
     esperando: inbox.map(paraEspera),
-    // Atribuição no slug canônico: DM partida (telefone × LID) é uma conversa só.
-    conversas: lista.map((g) => paraConversa(g, ctx, canonicoDe(g.slug))),
+    // Atribuição no slug canônico (o mesmo da espera): DM partida (telefone × LID) é uma conversa só.
+    conversas: comEsperasSemConversa(
+      lista.map((g) => paraConversa(g, ctx, canonicoDe(g.slug))),
+      inbox,
+      ctx,
+    ),
     entregas: [],
     aguardandoOk: [],
     eu,
     departamentos: ctx.departamentos.map(({ id, nome }) => ({ id, nome })),
     meusDepartamentos: departamentosDe(ctx.departamentos, eu),
     geradoEm: Date.now(),
+  };
+  // Slugs já canônicos (agruparConversas). A IA classifica em segundo plano, sem atrasar a fila.
+  void classificarPendentes(slugsEmEspera);
+  return dados;
+}
+
+/** Atribuição da conversa aberta, pronta para a tela: nomes, departamentos e quem pode receber. */
+export interface DadosAtribuicaoConversa {
+  /** Login de quem olha, ou `@dono`. */
+  eu: string;
+  inicial: AtribuicaoFila;
+  departamentos: { id: string; nome: string }[];
+  /** Contas ativas e o dono, sem quem está olhando (para delegar). */
+  equipe: { id: string; nome: string }[];
+}
+
+/** `chave` é o slug canônico da conversa (no dono, o próprio slug). */
+export async function atribuicaoDaConversaAberta(chave: string, eu: string): Promise<DadosAtribuicaoConversa> {
+  const [ctx, usuarios] = await Promise.all([contextoAtribuicao(), lerUsuarios()]);
+  const contas = usuarios.filter((u) => u.ativo && u.login !== eu).map((u) => ({ id: u.login, nome: u.nome }));
+  return {
+    eu,
+    inicial: atribuicaoDaConversa(chave, ctx),
+    departamentos: ctx.departamentos.map(({ id, nome }) => ({ id, nome })),
+    equipe: eu === DONO ? contas : [...contas, { id: DONO, nome: ctx.nomeDono }],
   };
 }
 
