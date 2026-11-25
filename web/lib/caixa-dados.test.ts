@@ -1,9 +1,28 @@
 import { appendFile, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { GroupSummary } from './data';
 import type { ContextoAtribuicao } from './caixa-dados';
+import { montarFila } from './caixa';
+
+// A espera vem do inbox e a classificação da IA; os dois são controlados pelo teste.
+const { buildInbox, classificarPendentes } = vi.hoisted(() => ({
+  buildInbox: vi.fn(async (_opts?: unknown): Promise<unknown[]> => []),
+  // Nunca resolve: se a fila esperasse a IA, o teste travaria.
+  classificarPendentes: vi.fn((_slugs: string[]): Promise<void> => new Promise(() => {})),
+}));
+vi.mock('./inbox', () => ({ buildInbox }));
+vi.mock('@/lib/equipe/classificar-departamento', () => ({ classificarPendentes }));
+
+const esperaFake = (slug: string, groupName: string) => ({
+  slug,
+  groupName,
+  reason: 'client-waiting',
+  who: 'Carla',
+  preview: 'oi',
+  waitingSince: '2026-11-25T09:00:00.000Z',
+});
 
 // O registro de entregas e o despacho moram em DATA_DIR (resolvido no import de ./paths).
 // `DONO` é o de `@/lib/equipe/atribuicoes`; não importo aqui porque esse módulo também lê DATA_DIR no import.
@@ -190,5 +209,43 @@ describe('fila com as atribuições gravadas em .equipe', () => {
     expect(f.eu).toBe(DONO);
     expect(f.meusDepartamentos).toEqual(['suporte', 'financeiro']);
     expect(f.departamentos).toHaveLength(2);
+  });
+});
+
+describe('classificação da IA e espera de DM partida', () => {
+  const eq = () => join(tmp, 'data', '.equipe');
+
+  it('filaDaEquipe passa os slugs da espera à classificação e não espera por ela', async () => {
+    buildInbox.mockResolvedValueOnce([esperaFake('grupo-a', 'Grupo A')]);
+    const f = await mod.filaDaEquipe(new Set(['grupo-a']), (s) => s, [grupo('grupo-a')], 'ana');
+    expect(classificarPendentes).toHaveBeenCalledWith(['grupo-a']);
+    expect(f.esperando.map((e) => e.slug)).toEqual(['grupo-a']);
+  });
+
+  it('filaDoDono também dispara a classificação com os slugs da espera, sem esperar', async () => {
+    buildInbox.mockResolvedValueOnce([esperaFake('grupo-b', 'Grupo B')]);
+    const f = await mod.filaDoDono();
+    expect(classificarPendentes).toHaveBeenCalledWith(['grupo-b']);
+    expect(f.esperando.map((e) => e.slug)).toEqual(['grupo-b']);
+  });
+
+  it('a espera de DM partida acha a atribuição pelo slug canônico, mesmo sem a conversa canônica na lista', async () => {
+    await mkdir(eq(), { recursive: true });
+    await writeFile(
+      join(eq(), 'usuarios.json'),
+      JSON.stringify([{ login: 'ana', nome: 'Ana Souza', senha: 'scrypt$x$y', ativo: true, versao: 1, chats: [], criadoEm: '2026-10-06T12:00:00.000Z', ultimoAcesso: null }]),
+    );
+    await writeFile(join(eq(), 'departamentos.json'), JSON.stringify(DEPARTAMENTOS));
+    await writeFile(join(eq(), 'atribuicoes.json'), JSON.stringify({ 'dm-tel': ATRIBUICAO_IA }));
+    // A lista só tem o LID; a espera e a atribuição estão no telefone (slug canônico).
+    const canonicoDe = (slug: string) => (slug === 'dm-lid' ? 'dm-tel' : slug);
+    buildInbox.mockResolvedValueOnce([esperaFake('dm-tel', 'Carla')]);
+
+    const f = await mod.filaDaEquipe(new Set(['dm-tel']), canonicoDe, [grupo('dm-lid')], 'ana');
+
+    const linhaDaEspera = montarFila(f, { vista: 'esperando' }).secoes[0]?.linhas.find((l) => l.slug === 'dm-tel');
+    expect(linhaDaEspera).toMatchObject({ responsavel: 'ana', responsavelNome: 'Ana Souza', departamentoNome: 'Suporte', departamentoSugerido: true });
+    // Com responsável, a espera sai da Fila.
+    expect(montarFila(f, { vista: 'fila' }).ordem).toEqual([]);
   });
 });
