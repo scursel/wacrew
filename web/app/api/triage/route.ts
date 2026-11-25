@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { readTriage, setAlert, setAutonomo, setCopilot, setLastSeen, setMuted, setNote, setResolved, setTypos, setEtiquetas, setAgente, setExecutor, setLatenciaMaxima, setSinalIgnorado } from "@/lib/triage";
+import { DONO, registrar } from "@/lib/equipe/atribuicoes";
+import { canonicoGlobal } from "@/lib/equipe/quem";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,6 +35,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "value deve ser string" }, { status: 400 });
       }
       await setResolved(slug, value);
+      await registrar((await canonicoGlobal())(slug), { tipo: "resolver", por: DONO });
       break;
     case "muted":
       if (typeof value !== "boolean") {

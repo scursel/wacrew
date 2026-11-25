@@ -3,7 +3,7 @@ import { destinoSemSessao, rotasPainel } from './rotas-painel';
 
 const msg = { id: 'M1', groupJid: '120363000000000000@g.us', sender: '5511999999999@s.whatsapp.net', fromMe: false };
 
-describe('rotas do dono = as de hoje (sem mudança de comportamento)', () => {
+describe('rotas do dono', () => {
   const r = rotasPainel('dono');
   it('leitura', () => {
     expect(r.inicio).toBe('/');
@@ -23,9 +23,9 @@ describe('rotas do dono = as de hoje (sem mudança de comportamento)', () => {
       url: '/api/react',
       body: { jid: msg.groupJid, msgId: 'M1', participant: msg.sender, fromMe: false, emoji: '👍' },
     });
-    expect(r.enviarTexto('g', 'J@g.us', 'oi')).toEqual({ url: '/api/send', body: { jid: 'J@g.us', text: 'oi' } });
+    expect(r.enviarTexto('g', 'J@g.us', 'oi')).toEqual({ url: '/api/send', body: { jid: 'J@g.us', slug: 'g', text: 'oi' } });
     expect(r.enviarTexto('g', null, 'oi')).toBeNull();
-    expect(r.enviarMidia('g', 'J@g.us')).toEqual({ url: '/api/send-media', campos: { jid: 'J@g.us' } });
+    expect(r.enviarMidia('g', 'J@g.us')).toEqual({ url: '/api/send-media', campos: { jid: 'J@g.us', slug: 'g' } });
     expect(r.visto('g', '2026-10-06T00:00:00.000Z')).toEqual({
       url: '/api/triage', body: { action: 'lastSeen', slug: 'g', value: '2026-10-06T00:00:00.000Z' },
     });
