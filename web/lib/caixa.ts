@@ -26,7 +26,23 @@ const DIA_MS = 24 * 60 * 60_000;
 
 // ── Fila ──────────────────────────────────────────────────────────────────
 
-export type VistaFila = 'esperando' | 'ia' | 'todas';
+/**
+ * Vistas da Caixa. Fila: espera sem responsável. Esperando: a espera de qualquer um.
+ * Departamento: conversas dos departamentos escolhidos (ou dos da pessoa). Minhas: as de
+ * quem olha. Com a IA: só o dono. Todas: a lista inteira.
+ */
+export type VistaFila = 'fila' | 'esperando' | 'departamento' | 'minhas' | 'ia' | 'todas';
+
+/** Departamento e responsável de uma conversa (vêm da atribuição; sem dados, ficam vazios). */
+export interface AtribuicaoFila {
+  departamento: string | null;
+  departamentoNome: string | null;
+  /** O departamento foi sugerido pela IA e ninguém confirmou ainda. */
+  departamentoSugerido: boolean;
+  /** Login do atendente ou `@dono`. */
+  responsavel: string | null;
+  responsavelNome: string | null;
+}
 
 /** Quem espera resposta: o recorte serializável do item da caixa de entrada. */
 export interface EsperaFila {
@@ -41,7 +57,7 @@ export interface EsperaFila {
 }
 
 /** Uma conversa da lista completa: o recorte serializável do resumo do chat. */
-export interface ConversaFila {
+export interface ConversaFila extends AtribuicaoFila {
   slug: string;
   nome: string;
   avatarPath: string | null;
@@ -81,6 +97,12 @@ export interface DadosFila {
   conversas: ConversaFila[];
   entregas: EntregaViva[];
   aguardandoOk: AguardandoOk[];
+  /** Quem olha a Caixa: login do atendente ou `@dono`. Alimenta Minhas. */
+  eu: string;
+  /** Departamentos cadastrados (id e nome), para o seletor da vista Departamento. */
+  departamentos: { id: string; nome: string }[];
+  /** Ids dos departamentos em que a pessoa está; a vista Departamento usa eles por padrão. */
+  meusDepartamentos: string[];
   /** Relógio do servidor: a primeira pintura usa ele, sem diferença na hidratação. */
   geradoEm: number;
 }
@@ -90,7 +112,7 @@ export type EstadoIa =
   | { tipo: 'agendado'; hora: string }
   | { tipo: 'ok'; n: number };
 
-export interface LinhaFila {
+export interface LinhaFila extends AtribuicaoFila {
   slug: string;
   nome: string;
   tipo: 'grupo' | 'dm';
@@ -123,8 +145,8 @@ export interface SecaoFila {
 
 export interface Fila {
   secoes: SecaoFila[];
-  /** Totais das vistas, sem filtro (vão no seletor). */
-  contagens: { esperando: number; ia: number };
+  /** Totais das vistas, sem filtro (vão no seletor). Fila e Minhas não contam as paradas, como Esperando. */
+  contagens: { esperando: number; ia: number; fila: number; minhas: number };
   /** Esperando você mais com a IA. */
   abertas: number;
   /** Slugs das linhas visíveis, na ordem da tela (J/K andam nela). */
@@ -184,11 +206,33 @@ function estadoDaEntrega(e: EntregaViva): EstadoIa | null {
 
 const ORDEM_IA: Record<EstadoIa['tipo'], number> = { entregando: 0, ok: 1, agendado: 2 };
 
+/**
+ * Monta a lista da Caixa para uma vista. `entrada.meusDepartamentos` e `opts.eu` vêm de
+ * `DadosFila` (quem olha). Vista Departamento: `opts.departamento` (o seletor) ou, sem ele,
+ * `meusDepartamentos`; sem nenhum dos dois, a vista fica vazia. Minhas: só com `opts.eu`.
+ */
 export function montarFila(
-  entrada: { esperando: EsperaFila[]; conversas: ConversaFila[]; entregas: EntregaViva[]; aguardandoOk: AguardandoOk[] },
-  opts: { vista: VistaFila; filtro?: string; arquivadasAbertas?: boolean; paradasAbertas?: boolean; agoraMs?: number },
+  entrada: {
+    esperando: EsperaFila[];
+    conversas: ConversaFila[];
+    entregas: EntregaViva[];
+    aguardandoOk: AguardandoOk[];
+    meusDepartamentos?: string[];
+  },
+  opts: {
+    vista: VistaFila;
+    filtro?: string;
+    arquivadasAbertas?: boolean;
+    paradasAbertas?: boolean;
+    agoraMs?: number;
+    /** Login de quem olha, ou `@dono`. */
+    eu?: string;
+    /** Departamento escolhido no seletor da vista Departamento. */
+    departamento?: string;
+  },
 ): Fila {
   const porSlug = new Map(entrada.conversas.map((c) => [c.slug, c]));
+  const eu = opts.eu ?? '';
 
   const base = (slug: string, nomeReserva?: string): LinhaFila => {
     const c = porSlug.get(slug);
@@ -206,6 +250,11 @@ export function montarFila(
       naoLidas: c?.naoLidas ?? 0,
       silenciada: c?.silenciada ?? false,
       ultimaEm: c?.ultimaEm ?? null,
+      departamento: c?.departamento ?? null,
+      departamentoNome: c?.departamentoNome ?? null,
+      departamentoSugerido: c?.departamentoSugerido ?? false,
+      responsavel: c?.responsavel ?? null,
+      responsavelNome: c?.responsavelNome ?? null,
     };
   };
 
@@ -279,13 +328,22 @@ export function montarFila(
     secoes.push({ id, titulo: TITULO[id], linhas: recolhida ? [] : visiveis, total: visiveis.length, recolhida });
   };
 
+  // Fila: a espera de quem ninguém assumiu (com as paradas recolhidas, como em Esperando).
+  const livres = (l: LinhaFila) => l.responsavel === null;
+  const filaLivre = linhasEspera.filter(livres).length;
+  const minhasTotal = entrada.conversas.filter((c) => c.responsavel === eu).length;
+
   if (opts.vista === 'esperando') {
     secao('esperando', linhasEspera);
     recolhivel('paradas', linhasParadas, opts.paradasAbertas);
+  } else if (opts.vista === 'fila') {
+    secao('esperando', linhasEspera.filter(livres));
+    recolhivel('paradas', linhasParadas.filter(livres), opts.paradasAbertas);
   } else if (opts.vista === 'ia') secao('ia', linhasIa);
   else {
-    // Todas: a lista do WhatsApp, pela última mensagem, com a espera (até a parada) e a IA na
-    // própria linha. Fixadas em cima; arquivadas recolhidas no fim.
+    // Lista do WhatsApp, pela última mensagem, com a espera (até a parada) e a IA na própria
+    // linha. Fixadas em cima; arquivadas recolhidas no fim. Minhas e Departamento usam a mesma
+    // lista, filtrada por quem responde a conversa ou por departamento.
     const esperaPorSlugViva = new Map(esperaViva.map((e) => [e.slug, e]));
     const completa = (slug: string, nomeReserva?: string): LinhaFila => {
       const linha = base(slug, nomeReserva);
@@ -298,28 +356,44 @@ export function montarFila(
       };
     };
     const recente = (a: LinhaFila, b: LinhaFila) => (b.ultimaEm ?? '').localeCompare(a.ultimaEm ?? '');
-    const naLista = new Set(entrada.conversas.map((c) => c.slug));
-    const foraDaLista = [...new Set([...esperaViva.map((e) => e.slug), ...ia.keys()])]
-      .filter((slug) => !naLista.has(slug))
-      // Conversa que não veio na lista (raro): entra na linha do tempo pela espera.
-      .map((slug) => {
-        const e = esperaPorSlugViva.get(slug);
-        return { ...completa(slug, e?.nome), ultimaEm: e?.desde ?? null };
-      });
-    const ativas = entrada.conversas.filter((c) => !c.arquivada);
-    secao('fixadas', ativas.filter((c) => c.fixada).map((c) => completa(c.slug)).sort(recente));
-    secao('conversas', [...ativas.filter((c) => !c.fixada).map((c) => completa(c.slug)), ...foraDaLista].sort(recente));
-    recolhivel('arquivadas', entrada.conversas.filter((c) => c.arquivada).map((c) => completa(c.slug)).sort(recente), opts.arquivadasAbertas);
-    // Seção sem nenhuma conversa (ou sem resultado no filtro) some.
-    for (let i = secoes.length - 1; i >= 0; i--) {
-      const s = secoes[i] as SecaoFila;
-      if (s.total === 0) secoes.splice(i, 1);
+    /** Seções da lista do tempo, só das conversas que `quer`; `extra` (fora da lista) entra só em Todas. */
+    const linhaDoTempo = (quer: (c: ConversaFila) => boolean, extra: LinhaFila[] = []) => {
+      const ativas = entrada.conversas.filter((c) => !c.arquivada && quer(c));
+      secao('fixadas', ativas.filter((c) => c.fixada).map((c) => completa(c.slug)).sort(recente));
+      secao('conversas', [...ativas.filter((c) => !c.fixada).map((c) => completa(c.slug)), ...extra].sort(recente));
+      recolhivel(
+        'arquivadas',
+        entrada.conversas.filter((c) => c.arquivada && quer(c)).map((c) => completa(c.slug)).sort(recente),
+        opts.arquivadasAbertas,
+      );
+      // Seção sem nenhuma conversa (ou sem resultado no filtro) some.
+      for (let i = secoes.length - 1; i >= 0; i--) {
+        const s = secoes[i] as SecaoFila;
+        if (s.total === 0) secoes.splice(i, 1);
+      }
+    };
+
+    if (opts.vista === 'minhas') {
+      linhaDoTempo((c) => c.responsavel === eu);
+    } else if (opts.vista === 'departamento') {
+      const deptos = opts.departamento ? [opts.departamento] : (entrada.meusDepartamentos ?? []);
+      linhaDoTempo((c) => c.departamento !== null && deptos.includes(c.departamento));
+    } else {
+      const naLista = new Set(entrada.conversas.map((c) => c.slug));
+      const foraDaLista = [...new Set([...esperaViva.map((e) => e.slug), ...ia.keys()])]
+        .filter((slug) => !naLista.has(slug))
+        // Conversa que não veio na lista (raro): entra na linha do tempo pela espera.
+        .map((slug) => {
+          const e = esperaPorSlugViva.get(slug);
+          return { ...completa(slug, e?.nome), ultimaEm: e?.desde ?? null };
+        });
+      linhaDoTempo(() => true, foraDaLista);
     }
   }
 
   return {
     secoes,
-    contagens: { esperando: linhasEspera.length, ia: linhasIa.length },
+    contagens: { esperando: linhasEspera.length, ia: linhasIa.length, fila: filaLivre, minhas: minhasTotal },
     abertas: new Set([...slugsEspera, ...linhasIa.map((l) => l.slug)]).size,
     ordem: secoes.flatMap((s) => s.linhas.map((l) => l.slug)),
   };

@@ -12,7 +12,7 @@ export async function GET() {
     await atendenteDoPedido();
     const p = await paginaDoAtendente();
     if (!p) return NextResponse.json({ error: "Autenticação necessária." }, { status: 401 });
-    return NextResponse.json(await filaDaEquipe(p.a.chats, p.canonicoDe, (await listaDaPagina()) ?? []));
+    return NextResponse.json(await filaDaEquipe(p.a.chats, p.canonicoDe, (await listaDaPagina()) ?? [], p.a.usuario.login));
   } catch (e) {
     return respostaDeErro(e);
   }

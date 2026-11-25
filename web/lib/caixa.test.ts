@@ -33,6 +33,11 @@ const conversa = (slug: string, extra: Partial<ConversaFila> = {}): ConversaFila
   silenciada: false,
   arquivada: false,
   etiquetas: [],
+  departamento: null,
+  departamentoNome: null,
+  departamentoSugerido: false,
+  responsavel: null,
+  responsavelNome: null,
   ...extra,
 });
 
@@ -70,7 +75,7 @@ describe('montarFila', () => {
     const f = montarFila({ esperando, conversas, entregas, aguardandoOk }, { vista: 'esperando' });
     expect(f.secoes.map((s) => s.id)).toEqual(['esperando']);
     expect(f.secoes[0]?.linhas.map((l) => l.slug)).toEqual(['norte', 'ebano']);
-    expect(f.contagens).toEqual({ esperando: 2, ia: 2 });
+    expect(f.contagens).toEqual({ esperando: 2, ia: 2, fila: 2, minhas: 0 });
     expect(f.abertas).toBe(4);
   });
 
@@ -177,7 +182,7 @@ describe('montarFila', () => {
 
   it('contagens não dependem do filtro', () => {
     const f = montarFila({ esperando, conversas, entregas, aguardandoOk }, { vista: 'esperando', filtro: 'nada disso' });
-    expect(f.contagens).toEqual({ esperando: 2, ia: 2 });
+    expect(f.contagens).toEqual({ esperando: 2, ia: 2, fila: 2, minhas: 0 });
     expect(f.secoes[0]?.linhas).toEqual([]);
   });
 
@@ -237,7 +242,7 @@ describe('montarFila', () => {
       },
       { vista: 'esperando', agoraMs: Date.parse('2026-10-07T12:00:00Z') },
     );
-    expect(f.contagens).toEqual({ esperando: 1, ia: 0 });
+    expect(f.contagens).toEqual({ esperando: 1, ia: 0, fila: 1, minhas: 0 });
     expect(f.secoes[0]?.linhas[0]).toMatchObject({ slug: 'mare', esperaDesde: '2026-10-07T10:00:00Z', aguardaOk: 4, ia: null });
     expect(f.abertas).toBe(1);
   });
@@ -254,7 +259,7 @@ describe('montarFila', () => {
     expect(esperando.secoes[0]?.linhas.map((l) => [l.slug, l.aguardaOk])).toEqual([['b', 7]]);
     const ia = montarFila(entrada, { vista: 'ia', agoraMs });
     expect(ia.secoes[0]?.linhas.map((l) => l.slug)).toEqual(['a', 'b']);
-    expect(ia.contagens).toEqual({ esperando: 1, ia: 2 });
+    expect(ia.contagens).toEqual({ esperando: 1, ia: 2, fila: 1, minhas: 0 });
     expect(ia.abertas).toBe(2);
     const todas = montarFila(entrada, { vista: 'todas', agoraMs });
     expect(todas.ordem).toEqual(['a', 'b']);
@@ -265,7 +270,126 @@ describe('montarFila', () => {
       { esperando: [espera('mare', '2026-10-07T09:00:00Z')], conversas: [conversa('mare')], entregas: [], aguardandoOk: [{ slug: 'mare', n: 1, texto: 'x', desde: '2026-09-01T00:00:00Z' }] },
       { vista: 'esperando', agoraMs: Date.parse('2026-10-07T12:00:00Z') },
     );
-    expect(f.contagens).toEqual({ esperando: 1, ia: 0 });
+    expect(f.contagens).toEqual({ esperando: 1, ia: 0, fila: 1, minhas: 0 });
+  });
+
+  // ── Vistas Fila, Departamento e Minhas ─────────────────────────────────
+
+  it('Fila mostra só as esperas sem responsável; quem já tem dono sai, e a parada sem dono continua recolhida', () => {
+    const agoraMs = Date.parse('2026-10-12T12:00:00Z');
+    const esp = [
+      espera('livre', '2026-10-11T10:00:00Z'),
+      espera('ana', '2026-10-10T10:00:00Z'),
+      espera('parada-livre', '2026-09-01T10:00:00Z'),
+    ];
+    const entrada = {
+      esperando: esp,
+      conversas: [
+        conversa('livre'),
+        conversa('ana', { responsavel: 'ana', responsavelNome: 'Ana' }),
+        conversa('parada-livre'),
+      ],
+      entregas: [],
+      aguardandoOk: [],
+    };
+    const f = montarFila(entrada, { vista: 'fila', agoraMs });
+    expect(f.secoes.map((s) => [s.id, s.linhas.map((l) => l.slug)])).toEqual([
+      ['esperando', ['livre']],
+      ['paradas', []],
+    ]);
+    expect(f.ordem).toEqual(['livre']);
+    expect(montarFila(entrada, { vista: 'fila', agoraMs, paradasAbertas: true }).ordem).toEqual(['livre', 'parada-livre']);
+  });
+
+  it('Minhas mostra só as conversas de quem está olhando, com a espera na linha, pela última mensagem', () => {
+    const entrada = {
+      esperando: [espera('a2', '2026-10-12T09:00:00Z')],
+      conversas: [
+        conversa('a1', { ultimaEm: '2026-10-10T09:00:00Z', responsavel: 'ana', responsavelNome: 'Ana' }),
+        conversa('a2', { ultimaEm: '2026-10-12T09:00:00Z', responsavel: 'ana', responsavelNome: 'Ana' }),
+        conversa('b1', { ultimaEm: '2026-10-11T09:00:00Z', responsavel: 'bia', responsavelNome: 'Bia' }),
+        conversa('livre', { ultimaEm: '2026-10-12T10:00:00Z' }),
+      ],
+      entregas: [],
+      aguardandoOk: [],
+    };
+    const f = montarFila(entrada, { vista: 'minhas', eu: 'ana' });
+    expect(f.secoes.map((s) => [s.id, s.linhas.map((l) => l.slug)])).toEqual([['conversas', ['a2', 'a1']]]);
+    expect(f.secoes[0]?.linhas[0]).toMatchObject({ slug: 'a2', esperaDesde: '2026-10-12T09:00:00Z', responsavel: 'ana' });
+    expect(f.secoes[0]?.linhas[1]?.esperaDesde).toBeNull();
+    expect(montarFila(entrada, { vista: 'minhas' }).ordem).toEqual([]);
+    expect(montarFila(entrada, { vista: 'minhas', eu: '@dono' }).ordem).toEqual([]);
+  });
+
+  it('Departamento mostra as conversas dos departamentos da pessoa; com o seletor, só o escolhido', () => {
+    const entrada = {
+      esperando: [],
+      conversas: [
+        conversa('s1', { ultimaEm: '2026-10-12T09:00:00Z', departamento: 'suporte', departamentoNome: 'Suporte' }),
+        conversa('f1', { ultimaEm: '2026-10-12T10:00:00Z', departamento: 'financeiro', departamentoNome: 'Financeiro' }),
+        conversa('s2', { ultimaEm: '2026-10-11T09:00:00Z', departamento: 'suporte', departamentoNome: 'Suporte' }),
+        conversa('sem'),
+      ],
+      entregas: [],
+      aguardandoOk: [],
+      meusDepartamentos: ['suporte'],
+    };
+    expect(montarFila(entrada, { vista: 'departamento' }).ordem).toEqual(['s1', 's2']);
+    expect(montarFila(entrada, { vista: 'departamento', departamento: 'financeiro' }).ordem).toEqual(['f1']);
+    // Quem não está em nenhum departamento não vê nada nessa vista (o dono escolhe pelo seletor).
+    expect(montarFila({ ...entrada, meusDepartamentos: [] }, { vista: 'departamento' }).ordem).toEqual([]);
+  });
+
+  it('Departamento e Minhas seguem a ordenação de Todas: fixadas, conversas e arquivadas recolhidas', () => {
+    const entrada = {
+      esperando: [],
+      conversas: [
+        conversa('fixa', { fixada: true, responsavel: 'ana', ultimaEm: '2026-10-01T09:00:00Z' }),
+        conversa('nova', { responsavel: 'ana', ultimaEm: '2026-10-12T09:00:00Z' }),
+        conversa('velha', { arquivada: true, responsavel: 'ana', ultimaEm: '2026-10-02T09:00:00Z' }),
+      ],
+      entregas: [],
+      aguardandoOk: [],
+    };
+    const f = montarFila(entrada, { vista: 'minhas', eu: 'ana' });
+    expect(f.secoes.map((s) => [s.id, s.linhas.map((l) => l.slug)])).toEqual([
+      ['fixadas', ['fixa']],
+      ['conversas', ['nova']],
+      ['arquivadas', []],
+    ]);
+    expect(f.secoes.at(-1)).toMatchObject({ recolhida: true, total: 1 });
+  });
+
+  it('conversa resolvida (sem dono, sem espera) não está na Fila; quando o cliente volta a escrever, entra e mantém o departamento', () => {
+    const agoraMs = Date.parse('2026-10-12T12:00:00Z');
+    const resolvida = conversa('r', { departamento: 'suporte', departamentoNome: 'Suporte', responsavel: null });
+    const parada = montarFila({ esperando: [], conversas: [resolvida], entregas: [], aguardandoOk: [] }, { vista: 'fila', agoraMs });
+    expect(parada.ordem).toEqual([]);
+    expect(parada.contagens.fila).toBe(0);
+    const voltou = montarFila(
+      { esperando: [espera('r', '2026-10-12T11:00:00Z')], conversas: [resolvida], entregas: [], aguardandoOk: [], meusDepartamentos: ['suporte'] },
+      { vista: 'fila', agoraMs },
+    );
+    expect(voltou.ordem).toEqual(['r']);
+    expect(voltou.secoes[0]?.linhas[0]).toMatchObject({ departamento: 'suporte', responsavel: null });
+    const dept = montarFila(
+      { esperando: [], conversas: [resolvida], entregas: [], aguardandoOk: [], meusDepartamentos: ['suporte'] },
+      { vista: 'departamento', agoraMs },
+    );
+    expect(dept.ordem).toEqual(['r']);
+  });
+
+  it('contagens de fila e minhas não dependem da vista nem do filtro', () => {
+    const entrada = {
+      esperando: [espera('a', '2026-10-07T09:00:00Z'), espera('b', '2026-10-07T09:30:00Z')],
+      conversas: [conversa('a', { responsavel: 'ana' }), conversa('b'), conversa('c', { responsavel: 'ana', arquivada: true })],
+      entregas: [],
+      aguardandoOk: [],
+    };
+    for (const vista of ['fila', 'minhas', 'todas'] as const) {
+      const f = montarFila(entrada, { vista, eu: 'ana', filtro: 'nada disso' });
+      expect(f.contagens).toEqual({ esperando: 2, ia: 0, fila: 1, minhas: 2 });
+    }
   });
 });
 

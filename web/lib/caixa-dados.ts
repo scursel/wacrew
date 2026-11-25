@@ -27,6 +27,13 @@ export function paraEspera(i: InboxItem): EsperaFila {
   return { slug: i.slug, nome: i.groupName, motivo: i.reason, de: i.who, previa: i.preview, desde: i.waitingSince };
 }
 
+/**
+ * Login de quem é dono da Caixa. Mesmo valor de `DONO` (a ser criado em `web/lib/equipe/atribuicoes.ts`):
+ * quando a atribuição entrar, troque por esse import.
+ */
+const DONO = '@dono';
+
+/** Os campos de atribuição ainda não vêm dos dados reais: a conversa fica sem departamento e sem responsável. */
 export function paraConversa(g: GroupSummary): ConversaFila {
   return {
     slug: g.slug,
@@ -39,6 +46,11 @@ export function paraConversa(g: GroupSummary): ConversaFila {
     silenciada: Boolean(g.muted),
     arquivada: Boolean(g.archived),
     etiquetas: g.etiquetas ?? [],
+    departamento: null,
+    departamentoNome: null,
+    departamentoSugerido: false,
+    responsavel: null,
+    responsavelNome: null,
   };
 }
 
@@ -95,6 +107,9 @@ export async function filaDoDono(): Promise<DadosFila> {
     conversas: grupos.map(paraConversa),
     entregas: ia.entregas,
     aguardandoOk: ia.aguardandoOk,
+    eu: DONO,
+    departamentos: [],
+    meusDepartamentos: [],
     geradoEm: Date.now(),
   };
 }
@@ -102,14 +117,25 @@ export async function filaDoDono(): Promise<DadosFila> {
 /**
  * Fila de quem atende: só os chats liberados. O "silenciado" é organização do
  * dono e não tira ninguém da fila; a DM partida em telefone × LID é uma conversa só.
+ * `eu` é o login de quem atende (alimenta a vista Minhas).
  */
 export async function filaDaEquipe(
   chats: ReadonlySet<string>,
   canonicoDe: (slug: string) => string,
   lista: GroupSummary[],
+  eu: string,
 ): Promise<DadosFila> {
   const inbox = await buildInbox({ slugs: chats, ignorarSilenciados: true, canonicoDe });
-  return { esperando: inbox.map(paraEspera), conversas: lista.map(paraConversa), entregas: [], aguardandoOk: [], geradoEm: Date.now() };
+  return {
+    esperando: inbox.map(paraEspera),
+    conversas: lista.map(paraConversa),
+    entregas: [],
+    aguardandoOk: [],
+    eu,
+    departamentos: [],
+    meusDepartamentos: [],
+    geradoEm: Date.now(),
+  };
 }
 
 /** O que a IA está fazendo agora: entregas na fila e perguntas esperando o OK. */

@@ -12,7 +12,7 @@ export default async function AtendimentoLayout({ children }: Readonly<{ childre
   const p = await paginaDoAtendente();
   // Dono (ou sessão inválida) não tem área de atendimento.
   if (!p) redirect("/");
-  const dados = await filaDaEquipe(p.a.chats, p.canonicoDe, (await listaDaPagina()) ?? []);
+  const dados = await filaDaEquipe(p.a.chats, p.canonicoDe, (await listaDaPagina()) ?? [], p.a.usuario.login);
   return (
     <RotasPainelProvider modo="atendimento">
       <div className="relative flex h-dvh overflow-hidden max-[860px]:flex-col-reverse">
