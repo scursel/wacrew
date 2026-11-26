@@ -1,5 +1,6 @@
 import { conversasDaRequisicao } from "@/lib/caixa-dados";
 import { CommandPalette } from "../components/CommandPalette";
+import { ProvedorTempoReal } from "../components/TempoRealProvider";
 import { Trilho } from "../components/Trilho";
 
 export const dynamic = "force-dynamic";
@@ -12,13 +13,13 @@ export default async function PainelLayout({
   const groups = await conversasDaRequisicao();
   const usuario = process.env.PANEL_USER?.trim() || "você";
   return (
-    <>
+    <ProvedorTempoReal>
       {/* Desktop: trilho | conteúdo. Celular: conteúdo em cima, trilho vira barra embaixo. */}
       <div className="relative flex h-dvh overflow-hidden max-[860px]:flex-col-reverse">
         <Trilho groups={groups} usuario={usuario} />
         <main className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</main>
       </div>
       <CommandPalette groups={groups} />
-    </>
+    </ProvedorTempoReal>
   );
 }

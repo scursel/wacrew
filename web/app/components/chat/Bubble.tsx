@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { corDoMatiz, matizDoNome } from "@/lib/aparencia";
 import { type Autoria, agruparReacoes, horaCurta } from "@/lib/caixa";
@@ -7,15 +8,13 @@ import type { MessageView, PollView } from "@/lib/data";
 import { instanteLongo } from "@/lib/formatar-data";
 import { LiveAudio } from "../LiveAudio";
 import { checarSessao, useRotas } from "../RotasPainel";
-import { Avatar, Button, cn, ScanShimmer, Icone } from "../ui";
+import { Avatar, Button, cn, Icone, ScanShimmer } from "../ui";
 import { baseName, type Contacts, numberFromJid, renderMentions, senderLabel } from "./format";
 
-/* Balão de mensagem e satélites (ações, recibos, enquete, mídia, transcrição).
-   Este arquivo é dono de tudo que desenha UMA mensagem da conversa. */
+/* Balão de mensagem e satélites (ações, recibos, enquete, mídia lightbox, mapa, vCard, transcrição). */
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "🙏", "✅"];
 
-/** Cor de identidade de quem mandou (borda e fundo do balão próprio, ícone e nome). */
 const EDGE: Record<Autoria["id"], string> = {
   celular: "var(--color-id-celular)",
   web: "var(--color-id-celular)",
@@ -34,8 +33,24 @@ const ICONE_AUTORIA: Partial<Record<Autoria["id"], "phone" | "monitor" | "spark"
   meta: "spark",
 };
 
-/** Barra que aparece no hover do balão: reagir rápido e copiar. */
-function MessageActions({ slug, m, mine }: { slug: string; m: MessageView; mine: boolean }) {
+/** Barra de ações no hover do balão: reações, responder, copiar, editar, apagar e encaminhar. */
+function MessageActions({
+  slug,
+  m,
+  mine,
+  onReply,
+  onStartEdit,
+  onAskDelete,
+  onForward,
+}: {
+  slug: string;
+  m: MessageView;
+  mine: boolean;
+  onReply?: (m: MessageView) => void;
+  onStartEdit?: () => void;
+  onAskDelete?: () => void;
+  onForward?: (m: MessageView) => void;
+}) {
   const rotas = useRotas();
   async function react(emoji: string) {
     try {
@@ -57,38 +72,82 @@ function MessageActions({ slug, m, mine }: { slug: string; m: MessageView; mine:
     <div
       className={cn(
         "absolute -top-3.5 z-10 flex items-center gap-0.5 rounded-full border border-line bg-surface px-1 py-0.5 opacity-0 [box-shadow:var(--shadow-pop)] transition-opacity group-hover:opacity-100 focus-within:opacity-100",
-        // Do lado oposto ao nome de quem escreveu, para não cobri-lo.
         mine ? "left-2" : "right-2",
       )}
     >
-      {QUICK_REACTIONS.map((e) => (
+      {!m.deleted &&
+        QUICK_REACTIONS.map((e) => (
+          <button
+            key={e}
+            type="button"
+            onClick={() => react(e)}
+            title={`Reagir com ${e}`}
+            aria-label={`Reagir com ${e}`}
+            className="rounded-full px-1 text-sm leading-none transition-transform hover:scale-125 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 motion-reduce:hover:scale-100"
+          >
+            {e}
+          </button>
+        ))}
+      {onReply && !m.deleted && (
         <button
-          key={e}
           type="button"
-          onClick={() => react(e)}
-          title={`Reagir com ${e}`}
-          aria-label={`Reagir com ${e}`}
-          className="rounded-full px-1 text-sm leading-none transition-transform hover:scale-125 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50 motion-reduce:hover:scale-100"
+          onClick={() => onReply(m)}
+          title="Responder"
+          aria-label="Responder"
+          className="ml-0.5 grid h-6 w-6 place-items-center rounded-full text-fg-dim transition-colors hover:bg-elevated hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
         >
-          {e}
+          <Icone nome="reply" tamanho={13} />
         </button>
-      ))}
-      {m.text && (
+      )}
+      {m.text && !m.deleted && (
         <button
           type="button"
           onClick={() => navigator.clipboard?.writeText(m.text).catch(() => {})}
           title="Copiar texto"
           aria-label="Copiar texto"
-          className="ml-0.5 grid h-6 w-6 place-items-center rounded-full text-fg-dim transition-colors hover:bg-elevated hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+          className="grid h-6 w-6 place-items-center rounded-full text-fg-dim transition-colors hover:bg-elevated hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
         >
           <Icone nome="copy" tamanho={13} />
+        </button>
+      )}
+      {onForward && !m.deleted && (m.text || m.mediaPath) && (
+        <button
+          type="button"
+          onClick={() => onForward(m)}
+          title="Encaminhar"
+          aria-label="Encaminhar"
+          className="grid h-6 w-6 place-items-center rounded-full text-fg-dim transition-colors hover:bg-elevated hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+        >
+          <Icone nome="forward" tamanho={13} />
+        </button>
+      )}
+      {mine && !m.deleted && m.text && onStartEdit && (
+        <button
+          type="button"
+          onClick={onStartEdit}
+          title="Editar mensagem"
+          aria-label="Editar mensagem"
+          className="grid h-6 w-6 place-items-center rounded-full text-fg-dim transition-colors hover:bg-elevated hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+        >
+          <Icone nome="edit" tamanho={13} />
+        </button>
+      )}
+      {mine && !m.deleted && onAskDelete && (
+        <button
+          type="button"
+          onClick={onAskDelete}
+          title="Apagar para todos"
+          aria-label="Apagar para todos"
+          className="grid h-6 w-6 place-items-center rounded-full text-fg-dim transition-colors hover:bg-elevated hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/50"
+        >
+          <Icone nome="trash" tamanho={13} />
         </button>
       )}
     </div>
   );
 }
 
-/** ✓ enviado · ✓✓ entregue · ✓✓ em acento = lido (em grupo, o popover diz por quem). */
+/** ✓ enviado · ✓✓ entregue · ✓✓ em acento = lido. */
 function ReceiptMark({
   r,
 }: {
@@ -221,6 +280,80 @@ function PollCard({ poll }: { poll: PollView }) {
   );
 }
 
+function LocationCard({ loc }: { loc: NonNullable<MessageView["location"]> }) {
+  const href = `https://www.google.com/maps?q=${loc.lat},${loc.lng}`;
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className="mb-1.5 flex max-w-[320px] items-start gap-2.5 rounded-control border border-line bg-surface-2 p-2.5 transition-colors hover:border-line-2"
+    >
+      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-[8px] bg-accent-soft text-accent">
+        <Icone nome="map-pin" tamanho={16} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[13px] font-medium text-fg">{loc.name || "Localização compartilhada"}</span>
+        {loc.address && <span className="block truncate text-[12px] text-fg-dim">{loc.address}</span>}
+        <span className="mt-0.5 block font-mono text-[11px] text-accent">
+          {loc.lat.toFixed(5)}, {loc.lng.toFixed(5)} · Abrir no Google Maps
+        </span>
+      </span>
+    </a>
+  );
+}
+
+function parseVcard(vcard: string, fallbackName?: string | null) {
+  const fn = vcard.match(/^FN[^:]*:(.+)$/im)?.[1]?.trim() || fallbackName || "Contato";
+  const tel = vcard.match(/^TEL[^:]*:([+0-9()\s-]{4,})$/im)?.[1]?.trim() || null;
+  const digits = tel ? tel.replace(/\D/g, "") : "";
+  return { name: fn, phone: tel, digits };
+}
+
+function ContactCard({ vcard, contactName }: { vcard: string; contactName?: string | null }) {
+  const rotas = useRotas();
+  const info = parseVcard(vcard, contactName);
+
+  function baixarVcf() {
+    const blob = new Blob([vcard], { type: "text/vcard;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${info.name.replace(/[^a-zA-Z0-9_-]+/g, "_") || "contato"}.vcf`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  return (
+    <div className="mb-1.5 w-[min(280px,100%)] rounded-control border border-line bg-surface-2 p-3">
+      <div className="flex items-center gap-2.5">
+        <Avatar nome={info.name} tipo="dm" tamanho="sm" />
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[13.5px] font-medium text-fg">{info.name}</div>
+          {info.phone && <div className="truncate font-mono text-[12px] text-fg-dim">{info.phone}</div>}
+        </div>
+      </div>
+      <div className="mt-2.5 flex flex-wrap gap-2 border-t border-line pt-2">
+        {info.digits.length >= 8 && rotas.modo === "dono" && (
+          <Link
+            href={`/g/dm-${info.digits}`}
+            className="text-[12px] font-medium text-accent hover:underline"
+          >
+            Iniciar conversa
+          </Link>
+        )}
+        <button
+          type="button"
+          onClick={baixarVcf}
+          className="ml-auto text-[12px] font-medium text-fg-dim hover:text-fg hover:underline"
+        >
+          Baixar .vcf
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /** Linha de quem escreveu, acima do balão. */
 function QuemEscreveu({
   m,
@@ -275,27 +408,99 @@ export function Bubble({
   continua = false,
   direta = false,
   fresh = false,
+  onReply,
+  onForward,
+  onEdited,
+  onDeleted,
+  onJumpToMessage,
 }: {
   slug: string;
   m: MessageView;
   contacts: Contacts;
-  /** Quem escreveu, quando a mensagem é da própria conta. */
   autoria: Autoria | null;
-  /** Bloco de balões de uma entrega da IA ("1–3 de 3 balões"), no começo do bloco. */
   entrega?: { texto: string; ticket: string };
-  /** Mesmo autor da anterior há pouco: sem avatar nem nome, colado nela. */
   continua?: boolean;
-  /** Conversa direta: quem escreve do outro lado é sempre a mesma pessoa, sem avatar nem nome. */
   direta?: boolean;
   fresh?: boolean;
+  onReply?: (m: MessageView) => void;
+  onForward?: (m: MessageView) => void;
+  onEdited?: (id: string, novoTexto: string) => void;
+  onDeleted?: (id: string) => void;
+  onJumpToMessage?: (id: string) => void;
 }) {
+  const rotas = useRotas();
   const mine = m.fromMe === true;
   const edge = autoria ? EDGE[autoria.id] : undefined;
   const reacoes = agruparReacoes(m.reactions);
   const celular = autoria?.id === "celular" || autoria?.id === "web" || autoria?.id === "voce";
-  const origemWhatsApp = autoria?.id === "celular" || autoria?.id === "web"
-    ? `Enviada ${autoria.via}`
-    : null;
+  const origemWhatsApp = autoria?.id === "celular" || autoria?.id === "web" ? `Enviada ${autoria.via}` : null;
+
+  const [editando, setEditando] = useState(false);
+  const [textoEdit, setTextoEdit] = useState(m.text);
+  const [salvandoEdit, setSalvandoEdit] = useState(false);
+  const [erroAcao, setErroAcao] = useState<string | null>(null);
+  const [confirmandoDelete, setConfirmandoDelete] = useState(false);
+  const [deletando, setDeletando] = useState(false);
+
+  async function salvarEdicao() {
+    const limpo = textoEdit.trim();
+    if (!limpo || salvandoEdit) return;
+    setSalvandoEdit(true);
+    setErroAcao(null);
+    try {
+      const p = rotas.editar(slug, m, limpo);
+      const res = checarSessao(
+        await fetch(p.url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(p.body),
+        }),
+        rotas,
+      );
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!res.ok || !data.ok) throw new Error(data.error ?? "falha ao editar");
+      setEditando(false);
+      onEdited?.(m.id, limpo);
+    } catch (e) {
+      setErroAcao(e instanceof Error ? e.message : "erro ao editar");
+    } finally {
+      setSalvandoEdit(false);
+    }
+  }
+
+  async function confirmarApagar() {
+    if (deletando) return;
+    setDeletando(true);
+    setErroAcao(null);
+    try {
+      const p = rotas.apagar(slug, m);
+      const res = checarSessao(
+        await fetch(p.url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(p.body),
+        }),
+        rotas,
+      );
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!res.ok || !data.ok) throw new Error(data.error ?? "falha ao apagar");
+      setConfirmandoDelete(false);
+      onDeleted?.(m.id);
+    } catch (e) {
+      setErroAcao(e instanceof Error ? e.message : "erro ao apagar");
+    } finally {
+      setDeletando(false);
+    }
+  }
+
+  const citacaoConteudo = m.quotedText && (
+    <>
+      {senderLabel(m.quotedSender, contacts) && (
+        <b className="block text-[12px] font-semibold text-fg">{senderLabel(m.quotedSender, contacts)}</b>
+      )}
+      {renderMentions(m.quotedText, contacts)}
+    </>
+  );
 
   const corpo = (
     <div
@@ -313,27 +518,81 @@ export function Bubble({
           : cn("border-line bg-bubble-their", !continua && "rounded-tl-[4px]"),
       )}
     >
-      <MessageActions slug={slug} m={m} mine={mine} />
+      <MessageActions
+        slug={slug}
+        m={m}
+        mine={mine}
+        onReply={onReply}
+        onForward={onForward}
+        onStartEdit={() => {
+          setTextoEdit(m.text);
+          setEditando(true);
+          setErroAcao(null);
+        }}
+        onAskDelete={() => {
+          setConfirmandoDelete(true);
+          setErroAcao(null);
+        }}
+      />
       {m.deleted ? (
         <p className="italic text-fg-faint">Mensagem apagada</p>
       ) : (
         <>
-          {m.quotedText && (
-            <div className="mb-2 line-clamp-4 break-words rounded-[6px] bg-[color-mix(in_srgb,var(--color-fg)_4%,transparent)] px-2.5 py-1.5 text-[13px] text-fg-dim shadow-[inset_2px_0_0_var(--color-line-2)]">
-              {senderLabel(m.quotedSender, contacts) && (
-                <b className="block text-[12px] font-semibold text-fg">{senderLabel(m.quotedSender, contacts)}</b>
-              )}
-              {renderMentions(m.quotedText, contacts)}
-            </div>
-          )}
+          {m.quotedText &&
+            (m.quotedId && onJumpToMessage ? (
+              <button
+                type="button"
+                onClick={() => onJumpToMessage(m.quotedId!)}
+                className="mb-2 block w-full line-clamp-4 break-words rounded-[6px] bg-[color-mix(in_srgb,var(--color-fg)_4%,transparent)] px-2.5 py-1.5 text-left text-[13px] text-fg-dim shadow-[inset_2px_0_0_var(--color-line-2)] hover:bg-[color-mix(in_srgb,var(--color-fg)_8%,transparent)]"
+              >
+                {citacaoConteudo}
+              </button>
+            ) : (
+              <div className="mb-2 line-clamp-4 break-words rounded-[6px] bg-[color-mix(in_srgb,var(--color-fg)_4%,transparent)] px-2.5 py-1.5 text-[13px] text-fg-dim shadow-[inset_2px_0_0_var(--color-line-2)]">
+                {citacaoConteudo}
+              </div>
+            ))}
           <Media slug={slug} m={m} />
-          {m.type === "poll" && m.poll ? (
+          {m.type === "location" && m.location ? (
+            <LocationCard loc={m.location} />
+          ) : m.type === "contact" && m.vcard ? (
+            <ContactCard vcard={m.vcard} contactName={m.contactName} />
+          ) : m.type === "poll" && m.poll ? (
             <PollCard poll={m.poll} />
+          ) : editando ? (
+            <div className="mt-1 space-y-2">
+              <textarea
+                value={textoEdit}
+                onChange={(e) => setTextoEdit(e.target.value)}
+                rows={3}
+                className="w-full min-w-[220px] rounded-[8px] border border-line-2 bg-surface px-2.5 py-1.5 text-[13.5px] text-fg focus:border-accent focus:outline-none"
+              />
+              <div className="flex items-center gap-2">
+                <Button type="button" size="sm" onClick={() => void salvarEdicao()} loading={salvandoEdit}>
+                  Salvar
+                </Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setEditando(false)} disabled={salvandoEdit}>
+                  Cancelar
+                </Button>
+              </div>
+            </div>
           ) : (
             m.text && <span className="whitespace-pre-wrap break-words">{renderMentions(m.text, contacts)}</span>
           )}
         </>
       )}
+      {confirmandoDelete && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 rounded-[8px] border border-danger/30 bg-danger-bg px-2.5 py-1.5 text-[12px]">
+          <span className="text-danger">Apagar para todos?</span>
+          <Button type="button" size="sm" variant="ghost" onClick={() => void confirmarApagar()} loading={deletando}>
+            Confirmar
+          </Button>
+          <Button type="button" size="sm" variant="ghost" onClick={() => setConfirmandoDelete(false)} disabled={deletando}>
+            Cancelar
+          </Button>
+        </div>
+      )}
+      {erroAcao && <p className="mt-1.5 text-[12px] text-danger">{erroAcao}</p>}
       <span
         className="float-right ml-3 mt-2 inline-flex items-center gap-1 font-mono text-[11px] leading-none tabular-nums text-fg-faint"
         title={instanteLongo(m.timestamp)}
@@ -394,9 +653,103 @@ export function Bubble({
   );
 }
 
+/** Lightbox <dialog> para ampliar imagens (com zoom) e vídeos, com botão de download. */
+function MediaLightbox({
+  open,
+  onClose,
+  src,
+  kind,
+}: {
+  open: boolean;
+  onClose: () => void;
+  src: string;
+  kind: "image" | "video";
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const [zoom, setZoom] = useState(false);
+
+  useEffect(() => {
+    const dlg = ref.current;
+    if (!dlg) return;
+    if (open && !dlg.open) {
+      setZoom(false);
+      dlg.showModal();
+    } else if (!open && dlg.open) {
+      dlg.close();
+    }
+  }, [open]);
+
+  if (!open) return null;
+  return (
+    <dialog
+      ref={ref}
+      aria-label="Visualizar mídia"
+      onClose={onClose}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      className="m-auto max-h-none max-w-none overflow-visible bg-transparent p-0 backdrop:bg-black/80 backdrop:backdrop-blur-sm"
+    >
+      <div className="relative flex flex-col items-center gap-3">
+        {kind === "image" ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={src}
+            alt="Imagem ampliada"
+            onClick={() => setZoom((z) => !z)}
+            className={cn(
+              "block rounded-card object-contain transition-transform [box-shadow:var(--float)]",
+              zoom ? "max-h-[92vh] max-w-[95vw] scale-125 cursor-zoom-out" : "max-h-[82vh] max-w-[90vw] cursor-zoom-in",
+            )}
+          />
+        ) : (
+          // biome-ignore lint/a11y/useMediaCaption: vídeo de cliente sem legenda
+          <video controls autoPlay src={src} className="max-h-[82vh] max-w-[90vw] rounded-card [box-shadow:var(--float)]" />
+        )}
+        <div className="flex items-center gap-2 rounded-full border border-line bg-surface px-3 py-1.5 [box-shadow:var(--float)]">
+          {kind === "image" && (
+            <button
+              type="button"
+              onClick={() => setZoom((z) => !z)}
+              className="text-[12.5px] font-medium text-fg-dim hover:text-fg"
+            >
+              {zoom ? "Zoom 1x" : "Zoom 2x"}
+            </button>
+          )}
+          <a
+            href={src}
+            download
+            className="inline-flex items-center gap-1.5 text-[12.5px] font-medium text-accent hover:underline"
+          >
+            <Icone nome="download" tamanho={13} />
+            Baixar
+          </a>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Fechar"
+            className="ml-1 grid h-6 w-6 place-items-center rounded-full text-fg-faint hover:bg-elevated hover:text-fg"
+          >
+            <Icone nome="x" tamanho={13} />
+          </button>
+        </div>
+      </div>
+    </dialog>
+  );
+}
+
 /** Imagem que não chegou a este painel vira um aviso no lugar do quadro quebrado. */
-function Imagem({ src, className }: { src: string; className: string }) {
+function Imagem({
+  src,
+  className,
+  ampliavel = false,
+}: {
+  src: string;
+  className: string;
+  ampliavel?: boolean;
+}) {
   const [falhou, setFalhou] = useState(false);
+  const [aberta, setAberta] = useState(false);
   if (falhou) {
     return (
       <div className="mb-2 flex aspect-video w-[320px] max-w-full items-end rounded-[8px] border border-line bg-elevated px-2 py-1.5 font-mono text-[11px] text-fg-faint">
@@ -404,19 +757,32 @@ function Imagem({ src, className }: { src: string; className: string }) {
       </div>
     );
   }
-  return (
+  const img = (
     // eslint-disable-next-line @next/next/no-img-element
     <img
       src={src}
       alt=""
       loading="lazy"
-      // O erro pode chegar antes da hidratação, quando o onError ainda não existe.
-      ref={(img) => {
-        if (img?.complete && img.naturalWidth === 0 && img.currentSrc) setFalhou(true);
+      ref={(el) => {
+        if (el?.complete && el.naturalWidth === 0 && el.currentSrc) setFalhou(true);
       }}
       onError={() => setFalhou(true)}
       className={className}
     />
+  );
+  if (!ampliavel) return img;
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setAberta(true)}
+        className="block cursor-zoom-in text-left"
+        title="Ampliar imagem"
+      >
+        {img}
+      </button>
+      <MediaLightbox open={aberta} onClose={() => setAberta(false)} src={src} kind="image" />
+    </>
   );
 }
 
@@ -431,8 +797,8 @@ const MIDIA_SEM_ARQUIVO: Record<string, string> = {
 
 function Media({ slug, m }: { slug: string; m: MessageView }) {
   const rotas = useRotas();
+  const [videoAberto, setVideoAberto] = useState(false);
   if (!m.mediaPath) {
-    // Mídia que não chegou a este painel e veio sem legenda: diz o que era, em vez de um balão vazio.
     const tipo = MIDIA_SEM_ARQUIVO[m.type];
     return tipo && !m.text ? <span className="italic text-fg-faint">{tipo} indisponível</span> : null;
   }
@@ -449,8 +815,18 @@ function Media({ slug, m }: { slug: string; m: MessageView }) {
     case "video":
       return (
         <div className="mb-2">
-          {/* biome-ignore lint/a11y/useMediaCaption: vídeo de cliente não tem legenda */}
-          <video controls preload="none" src={src} className="w-[320px] max-w-full rounded-[8px] border border-line" />
+          <div className="relative w-[320px] max-w-full">
+            {/* biome-ignore lint/a11y/useMediaCaption: vídeo de cliente não tem legenda */}
+            <video controls preload="none" src={src} className="w-full rounded-[8px] border border-line" />
+            <button
+              type="button"
+              onClick={() => setVideoAberto(true)}
+              className="mt-1 text-[11.5px] font-medium text-accent hover:underline"
+            >
+              Ampliar / Baixar vídeo
+            </button>
+          </div>
+          <MediaLightbox open={videoAberto} onClose={() => setVideoAberto(false)} src={src} kind="video" />
           <Transcribe slug={slug} mediaPath={m.mediaPath} initial={m.transcript} />
         </div>
       );
@@ -460,7 +836,7 @@ function Media({ slug, m }: { slug: string; m: MessageView }) {
         <video src={src} autoPlay loop muted playsInline className="mb-2 w-[280px] max-w-full rounded-[8px] border border-line" />
       );
     case "image":
-      return <Imagem src={src} className="mb-2 w-[320px] max-w-full rounded-[8px] border border-line" />;
+      return <Imagem src={src} ampliavel className="mb-2 w-[320px] max-w-full rounded-[8px] border border-line" />;
     case "sticker":
       return <Imagem src={src} className="h-28 w-28 object-contain" />;
     case "document":

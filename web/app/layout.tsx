@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { JetBrains_Mono, Onest, Source_Serif_4 } from "next/font/google";
+import { PwaRegistrar } from "./components/PwaRegistrar";
 import "./globals.css";
 
 const onest = Onest({ subsets: ["latin"], variable: "--font-onest", display: "swap" });
@@ -46,7 +47,10 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body>{children}</body>
+      <body>
+        <PwaRegistrar />
+        {children}
+      </body>
     </html>
   );
 }

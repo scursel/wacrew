@@ -3,15 +3,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CorpoPagina, Grade12 } from "@/app/components/ui";
 import { secaoAtiva } from "@/lib/secao-ativa";
+import { AutomacoesCard } from "./AutomacoesCard";
+import { CanaisCard } from "./CanaisCard";
 import { ConexaoCard } from "./ConexaoCard";
+import { ExpedienteCard } from "./ExpedienteCard";
 import { GruposCard } from "./GruposCard";
 import { ModelosCard } from "./ModelosCard";
 import { NavSecoes } from "./NavSecoes";
 import { RadarCard } from "./RadarCard";
+import { RespostasProntasCard } from "./RespostasProntasCard";
 import { type IdSecao, type Resumo, SECOES } from "./secoes";
 import { SincronizacaoCard } from "./SincronizacaoCard";
 import { TimeCard } from "./TimeCard";
 import { TranscricaoCard } from "./TranscricaoCard";
+import { WebhooksCard } from "./WebhooksCard";
 
 /** Configurações: navegação por seção à esquerda (faixa no topo no celular) e um card por seção. */
 export function ConfigView() {
@@ -75,11 +80,16 @@ export function ConfigView() {
         <NavSecoes ativa={ativa} resumos={resumos} aoIr={irPara} />
         <Grade12>
           <ConexaoCard aoResumir={resumir} />
+          <CanaisCard aoResumir={resumir} />
           <SincronizacaoCard aoResumir={resumir} />
           <GruposCard aoResumir={resumir} />
           <RadarCard aoResumir={resumir} />
           <TranscricaoCard aoResumir={resumir} />
           <ModelosCard aoResumir={resumir} />
+          <RespostasProntasCard aoResumir={resumir} />
+          <ExpedienteCard aoResumir={resumir} />
+          <AutomacoesCard aoResumir={resumir} />
+          <WebhooksCard aoResumir={resumir} />
           <TimeCard aoResumir={resumir} />
         </Grade12>
       </div>

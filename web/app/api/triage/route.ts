@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { readTriage, setAlert, setAutonomo, setCopilot, setLastSeen, setMuted, setNote, setTypos, setEtiquetas, setAgente, setExecutor, setLatenciaMaxima, setSinalIgnorado } from "@/lib/triage";
+import { readTriage, setAlert, setAutonomo, setCopilot, setLastSeen, setMarkedUnread, setMuted, setNote, setSnooze, setStatus, setTypos, setEtiquetas, setAgente, setExecutor, setLatenciaMaxima, setSinalIgnorado, type StatusConversa } from "@/lib/triage";
 import { resolverConversa } from "@/lib/equipe/resolver";
 
 export const runtime = "nodejs";
@@ -9,10 +9,17 @@ export async function GET() {
   return NextResponse.json(await readTriage());
 }
 
+interface BulkValue {
+  slugs?: string[];
+  op?: "resolver" | "silenciar" | "etiquetar" | "naoLida";
+  muted?: boolean;
+  etiqueta?: string;
+}
+
 interface TriagePost {
-  action?: "resolved" | "muted" | "note" | "lastSeen" | "copilot" | "alertar" | "autonomo" | "typos" | "etiquetas" | "agente" | "executor" | "latenciaMaxima" | "ignorarSinal";
+  action?: "resolved" | "status" | "snooze" | "markedUnread" | "bulk" | "muted" | "note" | "lastSeen" | "copilot" | "alertar" | "autonomo" | "typos" | "etiquetas" | "agente" | "executor" | "latenciaMaxima" | "ignorarSinal";
   slug?: string;
-  value?: string | boolean | number | null;
+  value?: string | boolean | number | null | BulkValue | string[];
 }
 
 export async function POST(req: Request) {
@@ -24,6 +31,36 @@ export async function POST(req: Request) {
   }
 
   const { action, slug, value } = body;
+
+  if (action === "bulk") {
+    const bulk = (value && typeof value === "object" && !Array.isArray(value) ? value : null) as BulkValue | null;
+    const slugs = Array.isArray(bulk?.slugs) ? bulk.slugs.filter((s): s is string => typeof s === "string" && Boolean(s)) : [];
+    if (slugs.length === 0 || !bulk?.op) {
+      return NextResponse.json({ error: "bulk inválido" }, { status: 400 });
+    }
+    const agora = new Date().toISOString();
+    const t = await readTriage();
+    for (const s of slugs) {
+      switch (bulk.op) {
+        case "resolver":
+          await resolverConversa(s, agora);
+          break;
+        case "silenciar":
+          await setMuted(s, bulk.muted ?? true);
+          break;
+        case "naoLida":
+          await setMarkedUnread(s, true);
+          break;
+        case "etiquetar": {
+          const tag = typeof bulk.etiqueta === "string" ? bulk.etiqueta.trim() : "";
+          if (tag) await setEtiquetas(s, [...(t.etiquetas[s] ?? []), tag]);
+          break;
+        }
+      }
+    }
+    return NextResponse.json({ ok: true });
+  }
+
   if (typeof slug !== "string" || !slug) {
     return NextResponse.json({ error: "slug inválido" }, { status: 400 });
   }
@@ -34,6 +71,24 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "value deve ser string" }, { status: 400 });
       }
       await resolverConversa(slug, value);
+      break;
+    case "status":
+      if (value !== null && value !== "aberta" && value !== "pendente" && value !== "adiada" && value !== "resolvida") {
+        return NextResponse.json({ error: "status inválido" }, { status: 400 });
+      }
+      await setStatus(slug, value as StatusConversa | null);
+      break;
+    case "snooze":
+      if (value !== null && typeof value !== "string") {
+        return NextResponse.json({ error: "value deve ser string ISO ou null" }, { status: 400 });
+      }
+      await setSnooze(slug, value || null);
+      break;
+    case "markedUnread":
+      if (typeof value !== "boolean") {
+        return NextResponse.json({ error: "value deve ser boolean" }, { status: 400 });
+      }
+      await setMarkedUnread(slug, value);
       break;
     case "muted":
       if (typeof value !== "boolean") {

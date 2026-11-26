@@ -22,7 +22,12 @@ export interface AtribuicaoConversaProps {
 const ROTA = "/api/atendimento/atribuicao";
 
 /** Corpo do contrato da rota: `{ slug, acao, para?, departamento? }`. */
-export type CorpoAtribuicao = { acao: "assumir" | "soltar" | "resolver" | "delegar" | "departamento"; para?: string; departamento?: string | null };
+export type CorpoAtribuicao = {
+  acao: "assumir" | "soltar" | "resolver" | "reabrir" | "delegar" | "departamento";
+  para?: string;
+  departamento?: string | null;
+  nota?: string;
+};
 
 /** Envia uma ação de atribuição. A rota também marca a conversa como resolvida quando a ação é "resolver". */
 export async function enviarAtribuicao(slug: string, corpo: CorpoAtribuicao, rotas: RotasPainel): Promise<void> {
@@ -52,6 +57,7 @@ export function AtribuicaoConversa({ slug, eu, inicial, departamentos, equipe, u
   const [delegando, setDelegando] = useState(false);
   const [paraDelegar, setParaDelegar] = useState("");
   const [deptoDelegar, setDeptoDelegar] = useState("");
+  const [notaDelegar, setNotaDelegar] = useState("");
 
   const executar = async (corpo: CorpoAtribuicao) => {
     if (ocupado) return;
@@ -60,6 +66,7 @@ export function AtribuicaoConversa({ slug, eu, inicial, departamentos, equipe, u
     try {
       await enviarAtribuicao(slug, corpo, rotas);
       setDelegando(false);
+      setNotaDelegar("");
       router.refresh();
     } catch {
       setErro("Não foi possível salvar. Tente de novo.");
@@ -154,6 +161,13 @@ export function AtribuicaoConversa({ slug, eu, inicial, departamentos, equipe, u
               ))}
             </Select>
           )}
+          <input
+            type="text"
+            value={notaDelegar}
+            onChange={(e) => setNotaDelegar(e.target.value)}
+            placeholder="Nota interna opcional para quem vai assumir…"
+            className="min-w-[180px] flex-1 rounded-control border border-line bg-surface px-2.5 py-1 text-[12.5px] text-fg placeholder:text-fg-faint focus:border-accent focus:outline-none"
+          />
           <Button
             size="sm"
             disabled={!paraDelegar || ocupado}
@@ -162,6 +176,7 @@ export function AtribuicaoConversa({ slug, eu, inicial, departamentos, equipe, u
                 acao: "delegar",
                 para: paraDelegar,
                 ...(deptoDelegar ? { departamento: deptoDelegar } : {}),
+                ...(notaDelegar.trim() ? { nota: notaDelegar.trim() } : {}),
               })
             }
           >

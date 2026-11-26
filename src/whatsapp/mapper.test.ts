@@ -122,3 +122,67 @@ describe('duração e páginas da mídia', () => {
     expect(mapMessage(recebidaNaDm(), sock, 'Fulano')).not.toHaveProperty('duracao_s');
   });
 });
+
+describe('quotedId, location e vcard estruturados', () => {
+  it('extrai quotedId (stanzaId) de contextInfo', () => {
+    const m = mapMessage(
+      recebidaNaDm({
+        message: {
+          extendedTextMessage: {
+            text: 'respondendo',
+            contextInfo: {
+              stanzaId: 'MSG-ORIG-123',
+              participant: DM,
+              quotedMessage: { conversation: 'texto citado' },
+            },
+          },
+        },
+      }),
+      sock,
+      'Fulano',
+    );
+    expect(m?.quotedId).toBe('MSG-ORIG-123');
+    expect(m?.quotedText).toBe('texto citado');
+  });
+
+  it('extrai lat/lng estruturados de locationMessage', () => {
+    const m = mapMessage(
+      recebidaNaDm({
+        message: {
+          locationMessage: {
+            degreesLatitude: -23.5505,
+            degreesLongitude: -46.6333,
+            name: 'Autocenter',
+            address: 'Av Paulista, 1000',
+          },
+        },
+      }),
+      sock,
+      'Fulano',
+    );
+    expect(m?.location).toEqual({
+      lat: -23.5505,
+      lng: -46.6333,
+      name: 'Autocenter',
+      address: 'Av Paulista, 1000',
+    });
+  });
+
+  it('extrai vcard e contactName de contactMessage', () => {
+    const vcard = 'BEGIN:VCARD\nVERSION:3.0\nFN:Carlos Mecânico\nTEL:+5511999990000\nEND:VCARD';
+    const m = mapMessage(
+      recebidaNaDm({
+        message: {
+          contactMessage: {
+            displayName: 'Carlos Mecânico',
+            vcard,
+          },
+        },
+      }),
+      sock,
+      'Fulano',
+    );
+    expect(m?.contactName).toBe('Carlos Mecânico');
+    expect(m?.vcard).toBe(vcard);
+  });
+});

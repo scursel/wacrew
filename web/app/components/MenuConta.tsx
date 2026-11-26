@@ -93,6 +93,16 @@ export function MenuConta({
       >
         Buscar ou ir para
       </button>
+      {ancora === "barra" && (
+        <>
+          <Link href="/escritorio" role="menuitem" className={ITEM} onClick={onFechar}>
+            Escritório
+          </Link>
+          <Link href="/agenda" role="menuitem" className={ITEM} onClick={onFechar}>
+            Agenda
+          </Link>
+        </>
+      )}
       {LINKS.map((l) => (
         <Link key={l.href} href={l.href} role="menuitem" className={ITEM} onClick={onFechar}>
           {l.rotulo}

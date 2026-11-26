@@ -35,6 +35,9 @@ export function GroupWorkspace({
   donoLogin = null,
   atribuicao,
   resolvida = false,
+  lastSeenInicial = null,
+  snoozedUntilInicial = null,
+  copilotoLiberado = false,
 }: {
   slug: string;
   groupName: string;
@@ -51,6 +54,9 @@ export function GroupWorkspace({
   atribuicao: DadosAtribuicaoConversa;
   /** Marcada como resolvida e o cliente não escreveu depois (ver `estaResolvida`): botão verde. */
   resolvida?: boolean;
+  lastSeenInicial?: string | null;
+  snoozedUntilInicial?: string | null;
+  copilotoLiberado?: boolean;
 }) {
   const rotas = useRotas();
   const router = useRouter();
@@ -106,8 +112,17 @@ export function GroupWorkspace({
 
   const [silenciado, setSilenciado] = useState(dono?.silenciado ?? false);
   const [resolucao, setResolucao] = useState<Resolucao>("parada");
+  const [reaberta, setReaberta] = useState(false);
+  const [snoozeAberto, setSnoozeAberto] = useState(false);
+  const [snoozeAte, setSnoozeAte] = useState<string | null>(snoozedUntilInicial);
+  const [snoozeCustom, setSnoozeCustom] = useState("");
 
-  const triagem = useCallback(async (action: "muted", value: boolean) => {
+  useEffect(() => {
+    setReaberta(false);
+    setSnoozeAte(snoozedUntilInicial);
+  }, [slug, resolvida, snoozedUntilInicial]);
+
+  const triagem = useCallback(async (action: "muted" | "snooze" | "markedUnread", value: boolean | string | null) => {
     const res = await fetch("/api/triage", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -117,11 +132,33 @@ export function GroupWorkspace({
     if (!res.ok || !data.ok) throw new Error("falha");
   }, [slug]);
 
+  const aplicarSnooze = useCallback(async (untilIso: string | null) => {
+    setSnoozeAte(untilIso);
+    setSnoozeAberto(false);
+    try {
+      await triagem("snooze", untilIso);
+      router.refresh();
+    } catch {
+      setSnoozeAte(snoozedUntilInicial);
+    }
+  }, [triagem, router, snoozedUntilInicial]);
+
+  const marcarNaoLida = useCallback(async () => {
+    try {
+      await triagem("markedUnread", true);
+      router.push(rotas.caixa);
+      router.refresh();
+    } catch {
+      /* ignora */
+    }
+  }, [triagem, router, rotas.caixa]);
+
   // Resolver solta a conversa: tira o responsável e a marca como resolvida na triagem (a rota faz os dois).
   // Vale para o dono e para a equipe.
   const resolver = useCallback(async () => {
     if (resolucao === "salvando") return;
     setResolucao("salvando");
+    setReaberta(false);
     try {
       await enviarAtribuicao(slug, { acao: "resolver" }, rotas);
       setResolucao("feita");
@@ -131,8 +168,21 @@ export function GroupWorkspace({
     }
   }, [resolucao, slug, router, rotas]);
 
+  const reabrir = useCallback(async () => {
+    if (resolucao === "salvando") return;
+    setResolucao("salvando");
+    try {
+      await enviarAtribuicao(slug, { acao: "reabrir" }, rotas);
+      setReaberta(true);
+      setResolucao("parada");
+      router.refresh();
+    } catch {
+      setResolucao("erro");
+    }
+  }, [resolucao, slug, router, rotas]);
+
   // Verde já no clique (antes de a página voltar do servidor) e enquanto continuar resolvida.
-  const verde = resolucao !== "erro" && (resolvida || resolucao === "feita");
+  const verde = resolucao !== "erro" && !reaberta && (resolvida || resolucao === "feita");
 
   useEffect(() => {
     if (resolucao !== "feita" && resolucao !== "erro") return;
@@ -179,6 +229,96 @@ export function GroupWorkspace({
         </span>
       )}
       {dono && (
+        <div className="relative max-[860px]:hidden">
+          <IconButton
+            size="sm"
+            aria-pressed={Boolean(snoozeAte)}
+            active={Boolean(snoozeAte)}
+            onClick={() => setSnoozeAberto((v) => !v)}
+            title={snoozeAte ? `Adiada até ${new Date(snoozeAte).toLocaleString("pt-BR")}` : "Adiar conversa (Snooze)"}
+            aria-label="Adiar conversa"
+          >
+            <Icone nome="clock" />
+          </IconButton>
+          {snoozeAberto && (
+            <div className="pop-in absolute right-0 top-full z-40 mt-1.5 w-60 rounded-[10px] border border-line bg-surface p-2 [box-shadow:var(--float)]">
+              <p className="px-2 py-1 text-[11.5px] font-medium text-fg-faint">Adiar conversa</p>
+              <button
+                type="button"
+                onClick={() => void aplicarSnooze(new Date(Date.now() + 3_600_000).toISOString())}
+                className="block w-full rounded-[6px] px-2.5 py-1.5 text-left text-[13px] text-fg hover:bg-surface-2"
+              >
+                Em 1 hora
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const d = new Date();
+                  d.setDate(d.getDate() + 1);
+                  d.setHours(9, 0, 0, 0);
+                  void aplicarSnooze(d.toISOString());
+                }}
+                className="block w-full rounded-[6px] px-2.5 py-1.5 text-left text-[13px] text-fg hover:bg-surface-2"
+              >
+                Amanhã às 9h
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const d = new Date();
+                  const diff = ((1 + 7 - d.getDay()) % 7) || 7;
+                  d.setDate(d.getDate() + diff);
+                  d.setHours(9, 0, 0, 0);
+                  void aplicarSnooze(d.toISOString());
+                }}
+                className="block w-full rounded-[6px] px-2.5 py-1.5 text-left text-[13px] text-fg hover:bg-surface-2"
+              >
+                Próxima segunda às 9h
+              </button>
+              <div className="mt-1.5 flex items-center gap-1 border-t border-line pt-1.5">
+                <input
+                  type="datetime-local"
+                  value={snoozeCustom}
+                  onChange={(e) => setSnoozeCustom(e.target.value)}
+                  className="min-w-0 flex-1 rounded-[6px] border border-line bg-surface-2 px-2 py-1 text-[11.5px] text-fg"
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={!snoozeCustom}
+                  onClick={() => {
+                    const ms = Date.parse(snoozeCustom);
+                    if (Number.isFinite(ms)) void aplicarSnooze(new Date(ms).toISOString());
+                  }}
+                >
+                  OK
+                </Button>
+              </div>
+              {snoozeAte && (
+                <button
+                  type="button"
+                  onClick={() => void aplicarSnooze(null)}
+                  className="mt-1 block w-full rounded-[6px] px-2.5 py-1.5 text-left text-[12.5px] text-danger hover:bg-danger-bg"
+                >
+                  Remover adiamento
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+      {dono && (
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => void marcarNaoLida()}
+          title="Marcar conversa como não lida"
+          className="max-[1020px]:hidden"
+        >
+          Não lida
+        </Button>
+      )}
+      {dono && (
         <IconButton
           size="sm"
           aria-pressed={silenciado}
@@ -206,6 +346,18 @@ export function GroupWorkspace({
         {resolucao !== "salvando" && <Icone nome="check" tamanho={15} />}
         {resolucao === "erro" ? "Tente de novo" : verde ? "Resolvida" : "Resolver"}
       </Button>
+      {verde && (
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={reabrir}
+          disabled={resolucao === "salvando"}
+          title="Reabrir conversa manualmente"
+          className="max-[860px]:h-10"
+        >
+          Reabrir
+        </Button>
+      )}
       <IconButton
         size="sm"
         data-alterna-painel
@@ -241,7 +393,11 @@ export function GroupWorkspace({
           agoraInicial={agora}
           donoLogin={donoLogin}
           draft={draft}
-          onAbrirCopiloto={dono ? abrirCopiloto : undefined}
+          onAbrirCopiloto={dono || copilotoLiberado ? abrirCopiloto : undefined}
+          lastSeenInicial={lastSeenInicial}
+          participantes={painel.pessoas.map((p) => ({ id: p.id, nome: p.nome }))}
+          atendenteNome={atribuicao.inicial.responsavelNome ?? donoLogin ?? null}
+          departamentoNome={atribuicao.inicial.departamentoNome}
           cabecalho={{ avatarPath: painel.avatarPath, tipo: painel.tipo, pessoas: painel.pessoas.length, acoes }}
         />
       </section>
@@ -251,9 +407,10 @@ export function GroupWorkspace({
         sobreposto={sobreposto}
         agora={agora}
         onFechar={fecharSobreposto}
-        onDraft={dono ? pushDraft : undefined}
+        onDraft={dono || copilotoLiberado ? pushDraft : undefined}
         onSalvo={() => router.refresh()}
         pedidoCopiloto={pedidoCopiloto}
+        copilotoLiberado={copilotoLiberado}
       />
     </div>
   );

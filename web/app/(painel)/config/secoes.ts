@@ -1,6 +1,18 @@
 import type { NomeIcone } from "@/app/components/ui";
 
-export type IdSecao = "conexao" | "sincronizacao" | "grupos" | "radar" | "transcricao" | "modelos" | "time";
+export type IdSecao =
+  | "conexao"
+  | "canais"
+  | "sincronizacao"
+  | "grupos"
+  | "radar"
+  | "transcricao"
+  | "modelos"
+  | "respostas"
+  | "expediente"
+  | "automacoes"
+  | "webhooks"
+  | "time";
 
 /** Estado curto de uma seção, mostrado ao lado do nome na navegação ("21/201", "ligado"). */
 export interface Resumo {
@@ -13,11 +25,16 @@ export type AoResumir = (id: IdSecao, resumo: Resumo) => void;
 /** Ordem da página. A navegação agrupa por `grupo`, na ordem em que os grupos aparecem. */
 export const SECOES: Array<{ id: IdSecao; rotulo: string; grupo: string; icone: NomeIcone }> = [
   { id: "conexao", rotulo: "Conexão", grupo: "WhatsApp", icone: "phone" },
+  { id: "canais", rotulo: "Canais (Multi-chip)", grupo: "WhatsApp", icone: "phone" },
   { id: "sincronizacao", rotulo: "Sincronização", grupo: "WhatsApp", icone: "refresh" },
   { id: "grupos", rotulo: "Grupos", grupo: "WhatsApp", icone: "users" },
   { id: "radar", rotulo: "Radar", grupo: "Avisos e áudio", icone: "bell" },
   { id: "transcricao", rotulo: "Transcrição", grupo: "Avisos e áudio", icone: "mic" },
   { id: "modelos", rotulo: "Modelos de IA", grupo: "IA", icone: "spark" },
+  { id: "respostas", rotulo: "Respostas prontas", grupo: "Atendimento", icone: "chat" },
+  { id: "expediente", rotulo: "Horário comercial", grupo: "Atendimento", icone: "clock" },
+  { id: "automacoes", rotulo: "Automações", grupo: "Atendimento", icone: "spark" },
+  { id: "webhooks", rotulo: "Webhooks", grupo: "Integrações", icone: "link" },
   { id: "time", rotulo: "Meu time", grupo: "Pessoas", icone: "user" },
 ];
 

@@ -29,9 +29,13 @@ export interface MessageRecord {
     | 'poll'
     | 'event';
   text: string;
+  quotedId?: string | null;
   quotedText: string | null;
   /** JID de quem escreveu a mensagem citada (reply), se houver. */
   quotedSender?: string | null;
+  location?: { lat: number; lng: number; name?: string | null; address?: string | null };
+  vcard?: string | null;
+  contactName?: string | null;
   mediaPath: string | null;
   /** Só em mensagem da própria conta (ou de bot). Ver `Origem`. */
   origem?: Origem;
@@ -724,6 +728,8 @@ export async function readGroupMessages(
         ...r,
         text,
         mediaPath: deleted ? null : r.mediaPath,
+        location: deleted ? undefined : r.location,
+        vcard: deleted ? undefined : r.vcard,
         transcript: deleted ? null : await readTranscript(slug, r.mediaPath),
         reactions: reactions.get(r.id) ?? [],
         receipt: r.fromMe ? (receipts.get(r.id) ?? null) : null,

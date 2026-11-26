@@ -20,6 +20,7 @@ import { classificarPendentes } from '@/lib/equipe/classificar-departamento';
 import { type Departamento, departamentosDe, lerDepartamentos, lerNomeDono } from '@/lib/equipe/departamentos';
 import { canonicoGlobal } from '@/lib/equipe/quem';
 import { lerUsuarios } from '@/lib/equipe/usuarios';
+import { readTriage, type TriageState } from './triage';
 
 /**
  * Dados da Caixa lidos no servidor (layout e rota). A parte pura mora em
@@ -68,18 +69,47 @@ export function atribuicaoDaConversa(chave: string, ctx: ContextoAtribuicao): At
 }
 
 /** `chave` é o slug canônico da conversa (na lista do dono, o próprio slug). */
-export function paraConversa(g: GroupSummary, ctx: ContextoAtribuicao, chave: string = g.slug): ConversaFila {
+export function paraConversa(
+  g: GroupSummary,
+  ctx: ContextoAtribuicao,
+  chave: string = g.slug,
+  triage?: TriageState,
+  agoraMs: number = Date.now(),
+): ConversaFila {
+  const snoozedRaw = triage?.snoozedUntil[g.slug] ?? null;
+  const snoozeExpired =
+    snoozedRaw !== null &&
+    ((Number.isFinite(Date.parse(snoozedRaw)) && Date.parse(snoozedRaw) <= agoraMs) ||
+      Boolean(g.lastTimestamp && g.lastTimestamp > snoozedRaw));
+  const snoozedUntil = snoozeExpired ? null : snoozedRaw;
+  const rawStatus = triage?.status[g.slug];
+  const resolved = triage?.resolved[g.slug];
+  const reopenedAfterResolve = Boolean(resolved && g.lastTimestamp && g.lastTimestamp > resolved);
+  const status =
+    snoozedUntil
+      ? 'adiada'
+      : rawStatus === 'adiada'
+        ? 'aberta'
+        : rawStatus === 'resolvida' || (resolved && !reopenedAfterResolve)
+          ? reopenedAfterResolve
+            ? 'aberta'
+            : 'resolvida'
+          : rawStatus ?? 'aberta';
+  const markedUnread = Boolean(triage?.markedUnread[g.slug]);
   return {
     slug: g.slug,
     nome: g.name,
     avatarPath: g.avatarPath,
     previa: g.lastPreview,
     ultimaEm: g.lastTimestamp,
-    naoLidas: g.unread,
+    naoLidas: markedUnread ? Math.max(1, g.unread) : g.unread,
     fixada: Boolean(g.pinned),
     silenciada: Boolean(g.muted),
     arquivada: Boolean(g.archived),
     etiquetas: g.etiquetas ?? [],
+    status,
+    snoozedUntil,
+    markedUnread,
     ...atribuicaoDaConversa(chave, ctx),
   };
 }
@@ -165,20 +195,22 @@ function comEsperasSemConversa(
 
 /** Fila do dono: quem espera, as conversas e o que a IA está fazendo. */
 export async function filaDoDono(): Promise<DadosFila> {
-  const [inbox, grupos, ia, ctx, canonicoDe] = await Promise.all([
+  const [inbox, grupos, ia, ctx, canonicoDe, triage] = await Promise.all([
     buildInbox(),
     conversasDaRequisicao(),
     iaDaCaixa(),
     contextoAtribuicao(),
     canonicoGlobal(),
+    readTriage(),
   ]);
+  const agora = Date.now();
   const slugsEmEspera = [...new Set(inbox.map((i) => canonicoDe(i.slug)))];
   const dados: DadosFila = {
     esperando: inbox.map(paraEspera),
     // A lista do dono não agrupa DM partida, mas a atribuição mora no slug canônico (onde as rotas gravam):
     // os dois lados mostram o mesmo responsável e departamento.
     conversas: comEsperasSemConversa(
-      grupos.map((g) => paraConversa(g, ctx, canonicoDe(g.slug))),
+      grupos.map((g) => paraConversa(g, ctx, canonicoDe(g.slug), triage, agora)),
       inbox,
       ctx,
       canonicoDe,
@@ -189,7 +221,7 @@ export async function filaDoDono(): Promise<DadosFila> {
     departamentos: ctx.departamentos.map(({ id, nome }) => ({ id, nome })),
     // O dono escolhe qualquer departamento: todos são dele.
     meusDepartamentos: ctx.departamentos.map((d) => d.id),
-    geradoEm: Date.now(),
+    geradoEm: agora,
   };
   // A IA classifica em segundo plano: a fila não espera por ela (a função não lança).
   void classificarPendentes(slugsEmEspera);
@@ -207,13 +239,18 @@ export async function filaDaEquipe(
   lista: GroupSummary[],
   eu: string,
 ): Promise<DadosFila> {
-  const [inbox, ctx] = await Promise.all([buildInbox({ slugs: chats, ignorarSilenciados: true, canonicoDe }), contextoAtribuicao()]);
+  const [inbox, ctx, triage] = await Promise.all([
+    buildInbox({ slugs: chats, ignorarSilenciados: true, canonicoDe }),
+    contextoAtribuicao(),
+    readTriage(),
+  ]);
+  const agora = Date.now();
   const slugsEmEspera = inbox.map((i) => i.slug);
   const dados: DadosFila = {
     esperando: inbox.map(paraEspera),
     // Atribuição no slug canônico (o mesmo da espera): DM partida (telefone × LID) é uma conversa só.
     conversas: comEsperasSemConversa(
-      lista.map((g) => paraConversa(g, ctx, canonicoDe(g.slug))),
+      lista.map((g) => paraConversa(g, ctx, canonicoDe(g.slug), triage, agora)),
       inbox,
       ctx,
       canonicoDe,

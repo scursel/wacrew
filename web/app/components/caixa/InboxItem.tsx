@@ -44,6 +44,9 @@ export function InboxItem({
   atual = false,
   cursor = false,
   onCursor,
+  selecionavel = false,
+  selecionada = false,
+  onToggleSelect,
 }: {
   linha: LinhaFila;
   href: string;
@@ -54,6 +57,9 @@ export function InboxItem({
   /** Linha onde está o cursor do J/K. */
   cursor?: boolean;
   onCursor?: () => void;
+  selecionavel?: boolean;
+  selecionada?: boolean;
+  onToggleSelect?: () => void;
 }) {
   // Pede atenção (espera, IA ou não lidas): nome forte. O resto fica mais leve.
   const lida = linha.naoLidas === 0 && !linha.esperaDesde && !linha.ia;
@@ -64,8 +70,15 @@ export function InboxItem({
       data-slug={linha.slug}
       aria-current={atual ? "page" : undefined}
       onMouseMove={onCursor}
+      onClick={(e) => {
+        if (selecionavel) {
+          e.preventDefault();
+          onToggleSelect?.();
+        }
+      }}
       className={cn(
-        "relative grid w-full grid-cols-[40px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-[3px] border-b border-line px-5 py-3.5 text-left text-[14px] leading-normal text-fg outline-none transition-colors max-[860px]:px-4",
+        "relative grid w-full items-center gap-x-3 gap-y-[3px] border-b border-line px-5 py-3.5 text-left text-[14px] leading-normal text-fg outline-none transition-colors max-[860px]:px-4",
+        selecionavel ? "grid-cols-[20px_40px_minmax(0,1fr)_auto]" : "grid-cols-[40px_minmax(0,1fr)_auto]",
         "focus-visible:shadow-[inset_0_0_0_2px_var(--color-accent)]",
         atual
           ? "bg-selected before:absolute before:inset-y-2.5 before:left-0 before:w-0.5 before:rounded-r-sm before:bg-accent"
@@ -74,6 +87,16 @@ export function InboxItem({
             : "hover:bg-surface-2",
       )}
     >
+      {selecionavel && (
+        <input
+          type="checkbox"
+          checked={selecionada}
+          onChange={() => onToggleSelect?.()}
+          onClick={(e) => e.stopPropagation()}
+          aria-label={`Selecionar ${linha.nome}`}
+          className="row-span-2 h-4 w-4 accent-accent"
+        />
+      )}
       <Avatar nome={linha.nome} tipo={linha.tipo} fotoUrl={fotoUrl} tamanho="lg" className="row-span-2" />
       <span className="flex min-w-0 items-center gap-1.5">
         <b className={cn("truncate", lida ? "font-medium text-fg-dim" : "font-semibold text-fg")}>{linha.nome}</b>

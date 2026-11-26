@@ -1,3 +1,4 @@
+import { readdir } from 'node:fs/promises';
 import { NextResponse } from 'next/server';
 import { conversasDaRequisicao } from '@/lib/caixa-dados';
 import { buildContacts, numberFromJid, roleOf } from '@/lib/contacts';
@@ -87,7 +88,34 @@ export async function GET(req: Request) {
           /* já fechado pelo runtime */
         }
       };
-      handle = abrirStreamEventos({ dataDir: DATA_DIR, slugs, cursor, filtro, papelDe, entregas: true }, (frame) => {
+      const descobrirSlugs = modoTodos
+        ? async () => {
+            const entries = await readdir(DATA_DIR, { withFileTypes: true }).catch(() => []);
+            const out: string[] = [];
+            for (const e of entries) {
+              if (!e.isDirectory() || e.name.startsWith('.')) continue;
+              try {
+                safeDataPath(e.name, 'messages.jsonl');
+                out.push(e.name);
+              } catch {
+                /* ignora */
+              }
+            }
+            return out;
+          }
+        : undefined;
+      handle = abrirStreamEventos(
+        {
+          dataDir: DATA_DIR,
+          slugs,
+          cursor,
+          filtro,
+          papelDe,
+          entregas: true,
+          incluirEventos: modoTodos,
+          descobrirSlugs,
+        },
+        (frame) => {
         if (fechado) return;
         try {
           controller.enqueue(enc.encode(frame));

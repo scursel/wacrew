@@ -19,6 +19,7 @@ export interface OptsTicket {
   typos: boolean;
   umBalao: boolean;
   citar?: string;
+  mentions?: string[];
   urgencia: Urgencia;
 }
 

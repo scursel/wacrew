@@ -75,6 +75,14 @@ interface SendMediaBody {
   caption?: string;
   fileName?: string;
   mimetype?: string;
+  quotedId?: string;
+}
+
+interface DeleteBody {
+  jid?: string;
+  msgId?: string;
+  participant?: string;
+  fromMe?: boolean;
 }
 
 interface CheckNumberBody {
@@ -267,6 +275,23 @@ export function startControlServer(
       return;
     }
 
+    if (req.method === 'POST' && req.url === '/pair-code') {
+      readJson(req)
+        .then(async (parsed) => {
+          const { number } = (parsed ?? {}) as CheckNumberBody;
+          const digits = (number ?? '').replace(/\D/g, '');
+          if (!digits) {
+            json(400, { error: 'number é obrigatório (dígitos com DDI)' });
+            return;
+          }
+          const code = await gateway.requestPairingCode(digits);
+          logger.info('🔗 Código de pareamento gerado via API de controle.');
+          json(200, { ok: true, code });
+        })
+        .catch((err) => json(500, { error: err instanceof Error ? err.message : 'erro' }));
+      return;
+    }
+
     // Leitura da conversa (grupo ou DM). Slug de DM = dm-<handle-do-jid>.
     if (req.method === 'GET' && req.url?.startsWith('/messages/')) {
       const path = req.url.split('?')[0] ?? '';
@@ -292,8 +317,8 @@ export function startControlServer(
             json(400, { error: 'jid, url e kind são obrigatórios' });
             return;
           }
-          if (kind !== 'image' && kind !== 'document') {
-            json(400, { error: 'kind deve ser image ou document' });
+          if (!MEDIA_KINDS.has(kind)) {
+            json(400, { error: 'kind deve ser image, document, audio, video ou gif' });
             return;
           }
           let safeUrl: URL;
@@ -303,6 +328,7 @@ export function startControlServer(
             json(400, { error: e instanceof Error ? e.message : 'url inválida' });
             return;
           }
+          const destino = await resolverJid(jid);
           const download = await fetch(safeUrl);
           if (!download.ok) {
             json(502, { error: `download falhou: HTTP ${download.status}` });
@@ -329,15 +355,32 @@ export function startControlServer(
                     fileName: fileName ?? 'documento.pdf',
                     caption,
                   }
-                : { kind: 'image', path: tmpPath, caption };
-            await gateway.sendMedia(jid, media);
-            logger.info({ kind }, '📎🔗 Mídia (via URL) enviada via API de controle.');
-            json(200, { ok: true });
+                : kind === 'audio'
+                  ? { kind: 'audio', path: tmpPath }
+                  : kind === 'video'
+                    ? { kind: 'video', path: tmpPath, caption }
+                    : kind === 'gif'
+                      ? { kind: 'gif', path: tmpPath, caption }
+                      : { kind: 'image', path: tmpPath, caption };
+            await gateway.sendMedia(destino.jid, media);
+            logger.info(
+              { kind, jid: destino.jid },
+              '📎🔗 Mídia (via URL) enviada via API de controle.',
+            );
+            json(200, {
+              ok: true,
+              jid: destino.jid,
+              ...(destino.corrigidoDe ? { jid_corrigido_de: destino.corrigidoDe } : {}),
+            });
           } finally {
             await unlink(tmpPath).catch(() => {});
           }
         })
-        .catch((err) => json(500, { error: err instanceof Error ? err.message : 'erro' }));
+        .catch((err) =>
+          json(err instanceof NumeroInexistente ? 400 : 500, {
+            error: err instanceof Error ? err.message : 'erro',
+          }),
+        );
       return;
     }
 
@@ -391,6 +434,7 @@ export function startControlServer(
               typos: typos === true,
               umBalao: umBalao === true,
               ...(baloes.length ? { baloes } : {}),
+              ...(Array.isArray(mentions) && mentions.length ? { mentions } : {}),
               ...(typeof body.citar === 'string' && body.citar ? { citar: body.citar } : {}),
               ...(typeof body.decorrido_s === 'number' ? { decorrido_s: body.decorrido_s } : {}),
               ...(typeof body.latenciaMaxima_s === 'number'
@@ -432,6 +476,7 @@ export function startControlServer(
             text,
             Array.isArray(mentions) ? mentions : undefined,
             metaDoCorpo(body),
+            typeof body.citar === 'string' && body.citar ? body.citar : undefined,
           );
           logger.info({ jid }, '📤 Mensagem enviada via API de controle.');
           json(200, { ok: true });
@@ -505,8 +550,16 @@ export function startControlServer(
             return;
           }
           const { media } = result;
-          const destino = await resolverJid((parsed as SendMediaBody).jid as string);
-          await gateway.sendMedia(destino.jid, media, metaDoCorpo(parsed as SendMediaBody));
+          const bodyMedia = parsed as SendMediaBody;
+          const destino = await resolverJid(bodyMedia.jid as string);
+          await gateway.sendMedia(
+            destino.jid,
+            media,
+            metaDoCorpo(bodyMedia),
+            typeof bodyMedia.quotedId === 'string' && bodyMedia.quotedId
+              ? bodyMedia.quotedId
+              : undefined,
+          );
           logger.info({ kind: media.kind }, '📎 Mídia enviada via API de controle.');
           json(200, {
             ok: true,
@@ -547,6 +600,22 @@ export function startControlServer(
           }
           await gateway.editText(jid, msgId, text.trim());
           logger.info({ jid, msgId }, '✏️  Mensagem editada via API de controle.');
+          json(200, { ok: true });
+        })
+        .catch((err) => json(500, { error: err instanceof Error ? err.message : 'erro' }));
+      return;
+    }
+
+    if (req.method === 'DELETE' && req.url === '/message') {
+      readJson(req)
+        .then(async (parsed) => {
+          const { jid, msgId, participant, fromMe } = (parsed ?? {}) as DeleteBody;
+          if (!jid || !msgId) {
+            json(400, { error: 'jid e msgId são obrigatórios' });
+            return;
+          }
+          await gateway.deleteMessage(jid, { id: msgId, participant, fromMe });
+          logger.info({ jid, msgId }, '🗑️  Mensagem apagada para todos via API de controle.');
           json(200, { ok: true });
         })
         .catch((err) => json(500, { error: err instanceof Error ? err.message : 'erro' }));

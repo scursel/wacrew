@@ -15,11 +15,21 @@ export type Atribuicoes = Record<string, Atribuicao>;
 export type EventoAtribuicao =
   | { tipo: 'assumir'; por: string }
   | { tipo: 'responder'; por: string }
-  | { tipo: 'delegar'; por: string; para: string | null; departamento?: string | null }
+  | { tipo: 'delegar'; por: string; para: string | null; departamento?: string | null; nota?: string }
   | { tipo: 'soltar'; por: string }
   | { tipo: 'departamento'; por: string; departamento: string | null }
   | { tipo: 'sugestao'; departamento: string | null }
   | { tipo: 'resolver'; por: string };
+
+export interface RegistroEventoAtribuicao {
+  ts: string;
+  slug: string;
+  tipo: EventoAtribuicao['tipo'];
+  por?: string;
+  para?: string | null;
+  departamento?: string | null;
+  nota?: string;
+}
 
 export function aplicar(estado: Atribuicoes, slug: string, ev: EventoAtribuicao, agoraIso: string): Atribuicoes {
   const atual: Atribuicao = estado[slug] ? { ...estado[slug] } : { departamento: null, origemDepartamento: null, responsavel: null, desde: null };
@@ -69,4 +79,23 @@ export function liberarLogin(login: string): Promise<void> {
 }
 export function limparDepartamento(id: string): Promise<void> {
   return serializar(async () => { const estado = await lerStrict(); for (const a of Object.values(estado)) if (a.departamento === id) { a.departamento = null; a.origemDepartamento = null; delete a.iaTentouEm; } await writeJsonAtomic(arquivo(), estado); });
+}
+
+export async function lerHistoricoAtribuicoes(slug?: string): Promise<RegistroEventoAtribuicao[]> {
+  try {
+    const raw = await readFile(join(DATA_DIR, '.equipe', 'atribuicoes.jsonl'), 'utf8');
+    const out: RegistroEventoAtribuicao[] = [];
+    for (const line of raw.split('\n')) {
+      if (!line.trim()) continue;
+      try {
+        const ev = JSON.parse(line) as RegistroEventoAtribuicao;
+        if ((!slug || ev.slug === slug) && typeof ev.ts === 'string' && typeof ev.tipo === 'string') out.push(ev);
+      } catch {
+        /* linha corrompida */
+      }
+    }
+    return out;
+  } catch {
+    return [];
+  }
 }

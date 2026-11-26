@@ -3,6 +3,8 @@ import { cache } from 'react';
 import type { Contacts } from '../contacts';
 import { slugsIrmaosDeDm } from '../dm-irmaos';
 import { credenciaisDoDono } from './autenticar';
+import { lerAtribuicoes } from './atribuicoes';
+import { departamentosDe, lerDepartamentos } from './departamentos';
 import { contatosDeIdentidade, slugsExistentes } from './identidade';
 import { chaveDeSessao, lerSessao, SESSION_COOKIE } from './sessao';
 import { acharUsuario, type Usuario } from './usuarios';
@@ -63,7 +65,25 @@ export async function atendentePeloToken(token: string | undefined): Promise<Ate
   if (!s || s.p !== 'atendente') return null;
   const usuario = await acharUsuario(s.u);
   if (!usuario || !usuario.ativo || usuario.versao !== s.v) return null;
-  return { usuario, chats: new Set(await slugsExistentes()) };
+  const todos = await slugsExistentes();
+  if (!usuario.restringirDepartamentos) {
+    return { usuario, chats: new Set(todos) };
+  }
+  const [deptos, atribuicoes, contatos] = await Promise.all([
+    lerDepartamentos(),
+    lerAtribuicoes(),
+    contatosDeIdentidade(),
+  ]);
+  const meus = new Set(departamentosDe(deptos, usuario.login));
+  const permitidos = new Set<string>();
+  for (const slug of todos) {
+    const canonico = /^dm-\d+$/.test(slug) ? slugCanonico(slugsIrmaosDeDm(slug, contatos, todos), contatos) : slug;
+    const atrib = atribuicoes[canonico];
+    if (atrib?.responsavel === usuario.login || (atrib?.departamento && meus.has(atrib.departamento))) {
+      permitidos.add(slug);
+    }
+  }
+  return { usuario, chats: permitidos };
 }
 
 /**

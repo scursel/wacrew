@@ -39,6 +39,7 @@ import type { MessageStore } from '../core/ports.js';
 import { logger } from '../logger.js';
 import { mediaFileName, slugForGroup } from '../storage/paths.js';
 import type { PresenceStore } from '../storage/presenceStore.js';
+import { dispararWebhookCollector } from './webhooks.js';
 
 /**
  * Orquestra o fluxo de uma mensagem: filtra grupos monitorados, baixa a mídia
@@ -49,6 +50,7 @@ export class Collector {
     private readonly store: MessageStore,
     private readonly groups: GroupConfig,
     private readonly presence: PresenceStore,
+    private readonly dataDir?: string,
   ) {}
 
   async handle(msg: InboundMessage): Promise<void> {
@@ -68,8 +70,12 @@ export class Collector {
       fromMe: msg.fromMe,
       type: msg.type,
       text: msg.text,
+      ...(msg.quotedId ? { quotedId: msg.quotedId } : {}),
       quotedText: msg.quotedText,
       quotedSender: msg.quotedSender,
+      ...(msg.location ? { location: msg.location } : {}),
+      ...(msg.vcard ? { vcard: msg.vcard } : {}),
+      ...(msg.contactName ? { contactName: msg.contactName } : {}),
       mediaPath,
       ...(msg.duracao_s ? { duracao_s: msg.duracao_s } : {}),
       ...(msg.paginas ? { paginas: msg.paginas } : {}),
@@ -80,6 +86,24 @@ export class Collector {
 
     try {
       await this.store.saveRecord(slug, record);
+      if (this.dataDir) {
+        void dispararWebhookCollector(
+          this.dataDir,
+          record.fromMe ? 'message.sent' : 'message.received',
+          {
+            slug,
+            id: record.id,
+            group: record.group,
+            groupJid: record.groupJid,
+            sender: record.sender,
+            senderName: record.senderName,
+            fromMe: record.fromMe,
+            type: record.type,
+            text: record.text,
+            timestamp: record.timestamp,
+          },
+        ).catch(() => {});
+      }
     } catch (err) {
       logger.error({ err, group: msg.groupName, id: msg.id }, 'Falha ao gravar registro.');
     }

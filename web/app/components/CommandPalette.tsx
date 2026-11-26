@@ -2,17 +2,20 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { ResultadoBuscaMensagem } from "@/lib/busca-mensagens";
 import type { GroupSummary } from "@/lib/data";
+import { casaBusca } from "@/lib/busca";
 import { Kbd } from "./ui/Kbd";
 
 type Cmd = { id: string; label: string; hint?: string; section: string; run: () => void };
 
-/** Command palette estilo Raycast (⌘K) — pular de grupo / rodar ação, teclado-first. */
+/** Command palette estilo Raycast (⌘K) — pular de grupo, buscar mensagens / rodar ação, teclado-first. */
 export function CommandPalette({ groups }: { groups: GroupSummary[] }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
+  const [msgHits, setMsgHits] = useState<ResultadoBuscaMensagem[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const activeRef = useRef<HTMLButtonElement>(null);
 
@@ -42,10 +45,43 @@ export function CommandPalette({ groups }: { groups: GroupSummary[] }) {
     ];
   }, [groups, router]);
 
+  useEffect(() => {
+    const q = query.trim();
+    if (!open || q.length < 2) {
+      setMsgHits([]);
+      return;
+    }
+    const ac = new AbortController();
+    const timer = setTimeout(() => {
+      fetch(`/api/busca?q=${encodeURIComponent(q)}&limit=8`, { signal: ac.signal })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d: { resultados?: ResultadoBuscaMensagem[] } | null) => {
+          if (d?.resultados) setMsgHits(d.resultados);
+        })
+        .catch(() => {});
+    }, 180);
+    return () => {
+      clearTimeout(timer);
+      ac.abort();
+    };
+  }, [open, query]);
+
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return q ? commands.filter((c) => c.label.toLowerCase().includes(q)) : commands;
-  }, [commands, query]);
+    const q = query.trim();
+    const base = q ? commands.filter((c) => casaBusca(c.label, q)) : commands;
+    if (q.length < 2 || msgHits.length === 0) return base;
+    const msgCmds: Cmd[] = msgHits.map((m) => ({
+      id: `m-${m.slug}-${m.id}`,
+      label: `${m.groupName}: ${m.trecho}`,
+      hint: m.source === "transcricao" ? "transcrição" : m.senderName,
+      section: "Mensagens",
+      run: () => {
+        setOpen(false);
+        router.push(`/g/${m.slug}?msg=${encodeURIComponent(m.id)}`);
+      },
+    }));
+    return [...base, ...msgCmds];
+  }, [commands, query, msgHits, router]);
 
   const sections = useMemo(() => [...new Set(filtered.map((c) => c.section))], [filtered]);
 

@@ -14,15 +14,20 @@ import {
 } from "@/lib/caixa";
 import type { MessageView } from "@/lib/data";
 import { fundirMensagens } from "@/lib/dm-irmaos";
+import type { PresencaAgente } from "@/lib/equipe/presenca-interna";
 import { instanteLongo } from "@/lib/formatar-data";
+import type { NotaInterna } from "@/lib/notas-internas";
+import type { ResultadoBuscaMensagem } from "@/lib/busca-mensagens";
 import type { UltimoAtendimento } from "@/lib/ultimo-atendimento";
+import { casaBusca } from "@/lib/busca";
 import { Bubble } from "./chat/Bubble";
-import { Composer } from "./chat/Composer";
+import { Composer, type MembroEquipeInterna, type ParticipanteGrupo, type ReplyTarget } from "./chat/Composer";
 import { type Contacts, numberFromJid } from "./chat/format";
 import { liberarSugestao, SuggestionCard } from "./chat/SuggestionCard";
 import { PresenceLine } from "./PresenceLine";
 import { checarSessao, useRotas } from "./RotasPainel";
-import { Avatar, Button, IconButton, Segmentado, cn, Icone } from "./ui";
+import { useTempoReal } from "./TempoRealProvider";
+import { Avatar, Button, CampoBusca, IconButton, Segmentado, cn, Icone } from "./ui";
 
 function SeparadorDia({ iso, agora }: { iso: string; agora: number }) {
   return (
@@ -41,6 +46,79 @@ function AvisoLine({ aviso }: { aviso: AvisoEntrega }) {
     >
       <Icone nome="alert" tamanho={14} className="shrink-0 text-warn" />
       {aviso.texto}
+    </div>
+  );
+}
+
+interface EventoAuditoriaView {
+  ts: string;
+  slug: string;
+  tipo: string;
+  por?: string;
+  para?: string | null;
+  departamento?: string | null;
+  nota?: string;
+  porNome: string | null;
+  paraNome: string | null;
+  departamentoNome: string | null;
+}
+
+function textoEventoAuditoria(e: EventoAuditoriaView): string {
+  const ator = e.porNome ?? e.por ?? "Alguém";
+  if (e.tipo === "assumir") return `${ator} assumiu a conversa`;
+  if (e.tipo === "soltar") return `${ator} soltou a conversa`;
+  if (e.tipo === "resolver") return `${ator} marcou como resolvida`;
+  if (e.tipo === "reabrir") return `${ator} reabriu a conversa`;
+  if (e.tipo === "delegar") {
+    const dest = e.paraNome ?? e.para ?? "colega";
+    return `${ator} delegou para ${dest}${e.nota ? ` — "${e.nota}"` : ""}`;
+  }
+  if (e.tipo === "departamento") {
+    return e.departamentoNome
+      ? `${ator} moveu para ${e.departamentoNome}`
+      : `${ator} removeu do departamento`;
+  }
+  if (e.tipo === "responder") return `${ator} respondeu`;
+  return `${ator} · ${e.tipo}`;
+}
+
+function EventoAuditoriaLine({ evento }: { evento: EventoAuditoriaView }) {
+  return (
+    <div
+      className="mt-3 inline-flex max-w-full items-center gap-1.5 self-center rounded-full bg-surface-2 px-3 py-1 text-center text-[11.5px] text-fg-faint"
+      title={instanteLongo(evento.ts)}
+    >
+      <Icone nome="history" tamanho={12} className="shrink-0" />
+      <span>{textoEventoAuditoria(evento)}</span>
+      <span className="font-mono text-[10.5px] opacity-80">{evento.ts.slice(11, 16)}</span>
+    </div>
+  );
+}
+
+function NotaLine({ nota }: { nota: NotaInterna }) {
+  const partes = nota.texto.split(/(@[a-z0-9._-]{2,32})/gi);
+  return (
+    <div
+      className="mt-4 flex max-w-[82%] flex-col self-end rounded-[12px] border border-warn/40 bg-warn-bg px-3.5 py-2.5 text-[13.5px] text-fg [box-shadow:var(--shadow-xs)]"
+      title={instanteLongo(nota.timestamp)}
+    >
+      <div className="mb-1 flex items-center gap-1.5 text-[11.5px] font-semibold text-warn">
+        <Icone nome="lock" tamanho={12} />
+        <span>Nota privada</span>
+        <span className="text-fg-dim">· {nota.autorNome}</span>
+        <span className="ml-auto font-mono font-normal text-fg-faint">{nota.timestamp.slice(11, 16)}</span>
+      </div>
+      <p className="whitespace-pre-wrap break-words leading-[1.45]">
+        {partes.map((p, i) =>
+          p.startsWith("@") && p.length > 2 ? (
+            <strong key={`${i}-${p}`} className="rounded bg-warn/15 px-1 font-semibold text-warn">
+              {p}
+            </strong>
+          ) : (
+            <Fragment key={`${i}-${p}`}>{p}</Fragment>
+          ),
+        )}
+      </p>
     </div>
   );
 }
@@ -120,6 +198,10 @@ export function Timeline({
   cabecalho,
   draft,
   onAbrirCopiloto,
+  lastSeenInicial = null,
+  participantes,
+  atendenteNome = null,
+  departamentoNome = null,
 }: {
   slug: string;
   groupName: string;
@@ -136,6 +218,10 @@ export function Timeline({
   draft?: { text: string; nonce: number } | null;
   /** O botão da IA no compositor abre o copiloto quando ele está desligado neste chat. */
   onAbrirCopiloto?: () => void;
+  lastSeenInicial?: string | null;
+  participantes?: ParticipanteGrupo[];
+  atendenteNome?: string | null;
+  departamentoNome?: string | null;
 }) {
   const [messages, setMessages] = useState<MessageView[]>(initial);
   const [ultimoAtendimento, setUltimoAtendimento] = useState(ultimoAtendimentoInicial);
@@ -151,9 +237,27 @@ export function Timeline({
   const [filtroAberto, setFiltroAberto] = useState(false);
   // Pedido explícito de rascunho (botão da IA): vale para a mensagem que era a última no clique.
   const [pedidoRascunho, setPedidoRascunho] = useState<{ id: string; n: number } | null>(null);
+  const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const [forwardMsg, setForwardMsg] = useState<MessageView | null>(null);
+  const [droppedFiles, setDroppedFiles] = useState<{ files: File[]; nonce: number } | null>(null);
+  const [failedMsgs, setFailedMsgs] = useState<
+    Array<{ id: string; text: string; quotedId?: string; mentions?: string[]; error: string; retrying?: boolean }>
+  >([]);
+  const [unreadCutoff] = useState<string | null>(lastSeenInicial);
+  const [buscaAberta, setBuscaAberta] = useState(false);
+  const [buscaTexto, setBuscaTexto] = useState("");
+  const [buscaResultados, setBuscaResultados] = useState<ResultadoBuscaMensagem[]>([]);
+  const [buscaCarregando, setBuscaCarregando] = useState(false);
+  const [notasInternas, setNotasInternas] = useState<NotaInterna[]>([]);
+  const [eventosAuditoria, setEventosAuditoria] = useState<EventoAuditoriaView[]>([]);
+  const [equipeInterna, setEquipeInterna] = useState<MembroEquipeInterna[]>([]);
+  const [outrosAgentes, setOutrosAgentes] = useState<PresencaAgente[]>([]);
+  const [isTypingLocal, setIsTypingLocal] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const rotas = useRotas();
+  const tempoReal = useTempoReal();
 
   const filterOptions = useMemo(() => {
     const order = ["audio", "image", "video", "gif", "document", "sticker"] as const;
@@ -174,20 +278,6 @@ export function Timeline({
   const conteudoRef = useRef<HTMLDivElement>(null);
   const marcarGesto = useCallback(() => {
     ultimoGesto.current = Date.now();
-  }, []);
-
-  const onScroll = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const distancia = el.scrollHeight - el.scrollTop - el.clientHeight;
-    if (distancia < 200) presoNoFim.current = true;
-    else if (Date.now() - ultimoGesto.current < 1500) presoNoFim.current = false;
-    setShowJump(distancia > 400);
-  }, []);
-
-  const jumpToBottom = useCallback(() => {
-    presoNoFim.current = true;
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, []);
 
   // Pagina o histórico para cima (como no WhatsApp), preservando a posição.
@@ -220,6 +310,23 @@ export function Timeline({
       setLoadingOlder(false);
     }
   }, [messages, slug, loadingOlder, rotas]);
+
+  const onScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const distancia = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (distancia < 200) presoNoFim.current = true;
+    else if (Date.now() - ultimoGesto.current < 1500) presoNoFim.current = false;
+    setShowJump(distancia > 400);
+    if (el.scrollTop < 120 && hasMore && !loadingOlder && mediaFilter === "all") {
+      void loadOlder();
+    }
+  }, [hasMore, loadingOlder, mediaFilter, loadOlder]);
+
+  const jumpToBottom = useCallback(() => {
+    presoNoFim.current = true;
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+  }, []);
 
   // Ids do carregamento inicial: só anima a entrada do que chegar depois.
   const initialIds = useRef(new Set(initial.map((m) => m.id)));
@@ -384,9 +491,124 @@ export function Timeline({
   }, [poll, router]);
 
   useEffect(() => {
-    const id = setInterval(poll, 3000);
+    const intervalo = tempoReal?.ativo ? 30_000 : 3000;
+    const id = setInterval(poll, intervalo);
     return () => clearInterval(id);
-  }, [poll]);
+  }, [poll, tempoReal?.ativo]);
+
+  const carregarColaboracao = useCallback(async () => {
+    try {
+      const [resNotas, resAud] = await Promise.all([
+        fetch(`/api/atendimento/notas-internas?slug=${encodeURIComponent(slug)}`, { cache: "no-store" }),
+        fetch(`/api/atendimento/atribuicao?slug=${encodeURIComponent(slug)}`, { cache: "no-store" }),
+      ]);
+      if (resNotas.ok) {
+        const d = (await resNotas.json()) as { notas?: NotaInterna[]; equipe?: MembroEquipeInterna[] };
+        if (Array.isArray(d.notas)) setNotasInternas(d.notas);
+        if (Array.isArray(d.equipe)) setEquipeInterna(d.equipe);
+      }
+      if (resAud.ok) {
+        const d = (await resAud.json()) as { eventos?: EventoAuditoriaView[] };
+        if (Array.isArray(d.eventos)) setEventosAuditoria(d.eventos);
+      }
+    } catch {
+      /* ignora erro transitório */
+    }
+  }, [slug]);
+
+  useEffect(() => {
+    void carregarColaboracao();
+    const id = setInterval(() => void carregarColaboracao(), 20_000);
+    return () => clearInterval(id);
+  }, [carregarColaboracao]);
+
+  useEffect(() => {
+    let alive = true;
+    const enviarPresenca = (estado: "vendo" | "digitando") => {
+      fetch("/api/atendimento/presenca-interna", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug, estado }),
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d: { outros?: PresencaAgente[] } | null) => {
+          if (alive && Array.isArray(d?.outros)) setOutrosAgentes(d.outros);
+        })
+        .catch(() => {});
+    };
+    enviarPresenca(isTypingLocal ? "digitando" : "vendo");
+    const id = setInterval(() => enviarPresenca(isTypingLocal ? "digitando" : "vendo"), 6000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [slug, isTypingLocal]);
+
+  useEffect(() => {
+    return () => {
+      fetch("/api/atendimento/presenca-interna", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug, estado: "saindo" }),
+        keepalive: true,
+      }).catch(() => {});
+    };
+  }, [slug]);
+
+  useEffect(() => {
+    if (!tempoReal) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const unsub = tempoReal.assinar((ev) => {
+      if (ev.slug !== slug) return;
+      if (ev.tipo === "message" || ev.tipo === "reaction" || ev.tipo === "receipt" || ev.tipo === "edit" || ev.tipo === "delete") {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => void poll(), 120);
+      } else if (ev.tipo === "atribuicao") {
+        void carregarColaboracao();
+      }
+    });
+    return () => {
+      if (timer) clearTimeout(timer);
+      unsub();
+    };
+  }, [tempoReal, slug, poll, carregarColaboracao]);
+
+  // Atalho ⌘F / Ctrl+F para busca na conversa.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        setBuscaAberta(true);
+      } else if (e.key === "Escape" && buscaAberta) {
+        setBuscaAberta(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [buscaAberta]);
+
+  useEffect(() => {
+    const q = buscaTexto.trim();
+    if (!buscaAberta || q.length < 2) {
+      setBuscaResultados([]);
+      return;
+    }
+    const ac = new AbortController();
+    setBuscaCarregando(true);
+    const t = setTimeout(() => {
+      fetch(rotas.busca(q, slug), { signal: ac.signal })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d: { resultados?: ResultadoBuscaMensagem[] } | null) => {
+          setBuscaResultados(d?.resultados ?? []);
+        })
+        .catch(() => {})
+        .finally(() => setBuscaCarregando(false));
+    }, 200);
+    return () => {
+      clearTimeout(t);
+      ac.abort();
+    };
+  }, [buscaAberta, buscaTexto, rotas, slug]);
 
   // Ao abrir ou trocar de conversa, vai direto para o fim e acompanha o que crescer depois.
   // biome-ignore lint/correctness/useExhaustiveDependencies: rola ao abrir/trocar
@@ -413,22 +635,140 @@ export function Timeline({
 
   const entregas = useMemo(() => ligarEntregas(messages, eventos, agora), [messages, eventos, agora]);
 
-  // Mensagens e avisos da fila numa linha só, na ordem do tempo (os avisos só na vista completa).
+  // Mensagens, avisos da fila, notas privadas e histórico de atribuição em ordem cronológica.
   const itens = useMemo(() => {
-    type Item = { tipo: "msg"; m: MessageView } | { tipo: "aviso"; a: AvisoEntrega };
+    type Item =
+      | { tipo: "msg"; m: MessageView }
+      | { tipo: "aviso"; a: AvisoEntrega }
+      | { tipo: "nota"; n: NotaInterna }
+      | { tipo: "evento"; e: EventoAuditoriaView };
     const lista: Item[] = shown.map((m) => ({ tipo: "msg", m }));
-    if (mediaFilter !== "all" || entregas.avisos.length === 0 || shown.length === 0) return lista;
+    if (mediaFilter !== "all") return lista;
     const inicio = shown[0]?.timestamp ?? "";
-    for (const a of entregas.avisos) if (a.ts >= inicio) lista.push({ tipo: "aviso", a });
-    const ts = (i: Item) => (i.tipo === "msg" ? i.m.timestamp : i.a.ts);
+    for (const a of entregas.avisos) {
+      if (!inicio || a.ts >= inicio) lista.push({ tipo: "aviso", a });
+    }
+    for (const n of notasInternas) {
+      if (!inicio || n.timestamp >= inicio) lista.push({ tipo: "nota", n });
+    }
+    for (const e of eventosAuditoria) {
+      if (e.tipo === "responder") continue;
+      if (!inicio || e.ts >= inicio) lista.push({ tipo: "evento", e });
+    }
+    const ts = (i: Item) =>
+      i.tipo === "msg" ? i.m.timestamp : i.tipo === "aviso" ? i.a.ts : i.tipo === "nota" ? i.n.timestamp : i.e.ts;
     return lista.sort((x, y) => ts(x).localeCompare(ts(y)));
-  }, [shown, entregas.avisos, mediaFilter]);
+  }, [shown, entregas.avisos, notasInternas, eventosAuditoria, mediaFilter]);
 
   // Quem continua o bloco da mensagem anterior e o rótulo de cada bloco da IA.
-  const blocos = useMemo(() => blocosDaConversa(itens, entregas.baloes, donoLogin), [itens, entregas.baloes, donoLogin]);
+  const blocos = useMemo(() => {
+    const simples = itens.map((it) => (it.tipo === "msg" ? it : { tipo: "aviso" as const }));
+    return blocosDaConversa(simples, entregas.baloes, donoLogin);
+  }, [itens, entregas.baloes, donoLogin]);
 
   const contagem = new Intl.NumberFormat("pt-BR").format(totalCount);
   const filtroAtivo = mediaFilter !== "all";
+  const groupJidAtual = ultimoGroupJid(messages);
+
+  const unreadInfo = useMemo(() => {
+    if (!unreadCutoff || mediaFilter !== "all") return null;
+    const incoming = shown.filter((m) => m.type !== "call" && !m.fromMe && m.timestamp > unreadCutoff);
+    if (incoming.length === 0) return null;
+    return { firstId: incoming[0]!.id, count: incoming.length };
+  }, [shown, unreadCutoff, mediaFilter]);
+
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+
+  const jumpToMessage = useCallback(
+    async (id: string) => {
+      const rolar = () => {
+        const container = scrollRef.current;
+        if (!container) return false;
+        const target = container.querySelector<HTMLElement>(`[data-msg-id="${CSS.escape(id)}"]`);
+        if (!target) return false;
+        presoNoFim.current = false;
+        target.scrollIntoView({ behavior: "smooth", block: "center" });
+        setHighlightedId(id);
+        setTimeout(() => setHighlightedId((cur) => (cur === id ? null : cur)), 2000);
+        return true;
+      };
+      if (rolar()) return;
+
+      // Carrega janelas anteriores até encontrar a mensagem (limite de 10 páginas).
+      let lista = messagesRef.current;
+      for (let i = 0; i < 10; i++) {
+        const first = lista.find((m) => m.type !== "call");
+        if (!first) break;
+        try {
+          const res = checarSessao(
+            await fetch(rotas.mensagens(slug, { before: first.id, limit: 150 }), { cache: "no-store" }),
+            rotas,
+          );
+          if (!res.ok) break;
+          const older = (await res.json()) as MessageView[];
+          if (older.length === 0) {
+            setHasMore(false);
+            break;
+          }
+          lista = fundirMensagens([older, lista]);
+          setMessages(lista);
+          if (older.filter((m) => m.type !== "call").length < 150) setHasMore(false);
+          if (lista.some((m) => m.id === id)) {
+            requestAnimationFrame(() => requestAnimationFrame(() => rolar()));
+            return;
+          }
+        } catch {
+          break;
+        }
+      }
+    },
+    [rotas, slug],
+  );
+
+  // Salto automático quando a página abre com ?msg=<id> (ex.: vindo da paleta ⌘K).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const msgId = new URLSearchParams(window.location.search).get("msg");
+    if (msgId) void jumpToMessage(msgId);
+  }, [jumpToMessage]);
+
+  const handleEdited = useCallback((id: string, novoTexto: string) => {
+    setMessages((cur) => cur.map((m) => (m.id === id ? { ...m, text: novoTexto, edited: true } : m)));
+  }, []);
+
+  const handleDeleted = useCallback((id: string) => {
+    setMessages((cur) => cur.map((m) => (m.id === id ? { ...m, text: "", mediaPath: null, deleted: true } : m)));
+  }, []);
+
+  const retryFailed = useCallback(
+    async (item: { id: string; text: string; quotedId?: string; mentions?: string[] }) => {
+      const pedido = rotas.enviarTexto(slug, groupJidAtual, item.text, {
+        mentions: item.mentions,
+        quotedId: item.quotedId,
+      });
+      if (!pedido) return;
+      setFailedMsgs((cur) => cur.map((f) => (f.id === item.id ? { ...f, retrying: true } : f)));
+      try {
+        const res = checarSessao(
+          await fetch(pedido.url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(pedido.body),
+          }),
+          rotas,
+        );
+        const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+        if (!res.ok || !data.ok) throw new Error(data.error ?? "falha no envio");
+        setFailedMsgs((cur) => cur.filter((f) => f.id !== item.id));
+        setTimeout(aoEnviar, 1000);
+      } catch (e) {
+        const err = e instanceof Error ? e.message : "erro";
+        setFailedMsgs((cur) => cur.map((f) => (f.id === item.id ? { ...f, retrying: false, error: err } : f)));
+      }
+    },
+    [rotas, slug, groupJidAtual, aoEnviar],
+  );
 
   return (
     <>
@@ -466,6 +806,16 @@ export function Timeline({
             />
           </div>
         </div>
+        <IconButton
+          size="sm"
+          title="Buscar nesta conversa (⌘F)"
+          aria-label="Buscar nesta conversa"
+          aria-pressed={buscaAberta}
+          active={buscaAberta}
+          onClick={() => setBuscaAberta((v) => !v)}
+        >
+          <Icone nome="search" />
+        </IconButton>
         {filterOptions.length > 1 && (
           <IconButton
             size="sm"
@@ -482,13 +832,72 @@ export function Timeline({
         {cabecalho.acoes}
       </header>
 
+      {buscaAberta && (
+        <div className="shrink-0 border-b border-line bg-surface px-5 py-2.5 max-[860px]:px-3">
+          <div className="flex items-center gap-2">
+            <CampoBusca
+              valor={buscaTexto}
+              aoMudar={setBuscaTexto}
+              placeholder="Buscar mensagens ou transcrições nesta conversa…"
+              rotulo="Buscar na conversa"
+              className="flex-1"
+            />
+            <Button type="button" size="sm" variant="ghost" onClick={() => setBuscaAberta(false)}>
+              Fechar
+            </Button>
+          </div>
+          {buscaTexto.trim().length >= 2 && (
+            <div className="mt-2 max-h-48 overflow-y-auto rounded-[8px] border border-line bg-surface-2">
+              {buscaCarregando ? (
+                <p className="px-3 py-2 text-[12px] text-fg-faint">Buscando…</p>
+              ) : buscaResultados.length === 0 ? (
+                <p className="px-3 py-2 text-[12px] text-fg-faint">Nenhuma mensagem encontrada.</p>
+              ) : (
+                <ul className="divide-y divide-line">
+                  {buscaResultados.map((r) => (
+                    <li key={`${r.source}-${r.id}`}>
+                      <button
+                        type="button"
+                        onClick={() => void jumpToMessage(r.id)}
+                        className="flex w-full items-baseline justify-between gap-2 px-3 py-2 text-left text-[12.5px] hover:bg-elevated"
+                      >
+                        <span className="min-w-0 flex-1 truncate text-fg">
+                          <strong className="font-medium">{r.senderName}: </strong>
+                          {r.trecho}
+                        </span>
+                        <span className="shrink-0 font-mono text-[11px] text-fg-faint">
+                          {r.source === "transcricao" ? "áudio · " : ""}
+                          {r.timestamp.slice(0, 10)}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {(filtroAberto || filtroAtivo) && filterOptions.length > 1 && (
         <div className="flex shrink-0 items-center gap-3 border-b border-line bg-surface px-5 py-2 max-[860px]:px-3">
           <Segmentado rotulo="Tipo de mensagem" valor={mediaFilter} aoMudar={setMediaFilter} opcoes={filterOptions} />
         </div>
       )}
 
-      <div className="relative flex min-h-0 flex-1 flex-col">
+      <div
+        className="relative flex min-h-0 flex-1 flex-col"
+        onDragOver={(e) => {
+          if (e.dataTransfer.types.includes("Files")) e.preventDefault();
+        }}
+        onDrop={(e) => {
+          if (e.dataTransfer.files?.length) {
+            e.preventDefault();
+            const files = Array.from(e.dataTransfer.files);
+            setDroppedFiles((d) => ({ files, nonce: (d?.nonce ?? 0) + 1 }));
+          }
+        }}
+      >
         <div
           ref={scrollRef}
           onScroll={onScroll}
@@ -514,15 +923,17 @@ export function Timeline({
             {ultimoAtendimento && !shown.some((m) => m.id === ultimoAtendimento.reabertoPorMensagem) && (
               <ObservacaoAtendimento atendimento={ultimoAtendimento} />
             )}
-            {shown.length === 0 ? (
+            {shown.length === 0 && notasInternas.length === 0 && eventosAuditoria.length === 0 ? (
               <p className="mt-16 text-center text-[13.5px] text-fg-faint">
                 {mediaFilter === "all" ? "Nenhuma mensagem capturada ainda nesta conversa." : "Nada deste tipo nas mensagens carregadas."}
               </p>
             ) : (
               itens.map((item, i) => {
+                const tsOf = (x: typeof item) =>
+                  x.tipo === "msg" ? x.m.timestamp : x.tipo === "aviso" ? x.a.ts : x.tipo === "nota" ? x.n.timestamp : x.e.ts;
                 const anterior = itens[i - 1];
-                const tsAnterior = anterior ? (anterior.tipo === "msg" ? anterior.m.timestamp : anterior.a.ts) : null;
-                const ts = item.tipo === "msg" ? item.m.timestamp : item.a.ts;
+                const tsAnterior = anterior ? tsOf(anterior) : null;
+                const ts = tsOf(item);
                 const novoDia = !tsAnterior || chaveDia(tsAnterior) !== chaveDia(ts);
                 if (item.tipo === "aviso") {
                   return (
@@ -532,31 +943,98 @@ export function Timeline({
                     </Fragment>
                   );
                 }
+                if (item.tipo === "nota") {
+                  return (
+                    <Fragment key={item.n.id}>
+                      {novoDia && <SeparadorDia iso={ts} agora={agora} />}
+                      <NotaLine nota={item.n} />
+                    </Fragment>
+                  );
+                }
+                if (item.tipo === "evento") {
+                  return (
+                    <Fragment key={`ev-${item.e.ts}-${i}`}>
+                      {novoDia && <SeparadorDia iso={ts} agora={agora} />}
+                      <EventoAuditoriaLine evento={item.e} />
+                    </Fragment>
+                  );
+                }
                 const m = item.m;
                 return (
                   <Fragment key={m.id}>
                     {novoDia && <SeparadorDia iso={m.timestamp} agora={agora} />}
+                    {unreadInfo?.firstId === m.id && (
+                      <div className="my-4 flex items-center gap-3 text-[11.5px] font-medium text-accent before:h-px before:flex-1 before:bg-accent/40 after:h-px after:flex-1 after:bg-accent/40">
+                        {unreadInfo.count === 1 ? "1 mensagem não lida" : `${unreadInfo.count} mensagens não lidas`}
+                      </div>
+                    )}
                     {ultimoAtendimento?.reabertoPorMensagem === m.id && (
                       <ObservacaoAtendimento atendimento={ultimoAtendimento} />
                     )}
                     {m.type === "call" && m.call ? (
                       <CallLine m={m} />
                     ) : (
-                      <Bubble
-                        slug={slug}
-                        m={m}
-                        contacts={contacts}
-                        autoria={autoria(m, donoLogin, Boolean(entregas.baloes[m.id]))}
-                        entrega={blocos.rotulos[m.id]}
-                        continua={!novoDia && blocos.continua.has(m.id)}
-                        direta={cabecalho.tipo === "dm"}
-                        fresh={!initialIds.current.has(m.id)}
-                      />
+                      <div
+                        data-msg-id={m.id}
+                        className={cn(
+                          "flex flex-col",
+                          highlightedId === m.id && "rounded-[14px] ring-2 ring-accent/70 transition-shadow",
+                        )}
+                      >
+                        <Bubble
+                          slug={slug}
+                          m={m}
+                          contacts={contacts}
+                          autoria={autoria(m, donoLogin, Boolean(entregas.baloes[m.id]))}
+                          entrega={blocos.rotulos[m.id]}
+                          continua={!novoDia && blocos.continua.has(m.id)}
+                          direta={cabecalho.tipo === "dm"}
+                          fresh={!initialIds.current.has(m.id)}
+                          onReply={(msg) =>
+                            setReplyTo({
+                              id: msg.id,
+                              senderName: msg.fromMe ? "Você" : msg.senderName,
+                              text: msg.text || `[${msg.type}]`,
+                            })
+                          }
+                          onForward={setForwardMsg}
+                          onEdited={handleEdited}
+                          onDeleted={handleDeleted}
+                          onJumpToMessage={jumpToMessage}
+                        />
+                      </div>
                     )}
                   </Fragment>
                 );
               })
             )}
+            {failedMsgs.map((f) => (
+              <div
+                key={f.id}
+                className="mt-3 flex max-w-[76%] flex-col items-end self-end rounded-[12px] border border-danger/40 bg-danger-bg px-3.5 py-2.5 text-[13.5px] text-fg"
+              >
+                <span className="whitespace-pre-wrap break-words">{f.text}</span>
+                <div className="mt-2 flex items-center gap-2 text-[12px]">
+                  <span className="text-danger">Falhou: {f.error}</span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="subtle"
+                    loading={f.retrying}
+                    onClick={() => void retryFailed(f)}
+                  >
+                    Tentar novamente
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={() => setFailedMsgs((cur) => cur.filter((x) => x.id !== f.id))}
+                    className="text-fg-faint hover:text-fg"
+                  >
+                    Descartar
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
 
@@ -574,13 +1052,44 @@ export function Timeline({
         )}
       </div>
 
+      {outrosAgentes.length > 0 && (
+        <div className="mx-auto flex w-full max-w-[776px] items-center gap-2 px-7 pb-1.5 text-[12px] text-warn max-[860px]:px-3">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-warn" />
+          <span>
+            {outrosAgentes.some((a) => a.estado === "digitando")
+              ? `${outrosAgentes
+                  .filter((a) => a.estado === "digitando")
+                  .map((a) => a.nome)
+                  .join(", ")} está digitando nesta conversa`
+              : `${outrosAgentes.map((a) => a.nome).join(", ")} ${
+                  outrosAgentes.length === 1 ? "está visualizando" : "estão visualizando"
+                } nesta conversa`}
+          </span>
+        </div>
+      )}
+
       <Composer
         slug={slug}
         nome={groupName}
-        groupJid={ultimoGroupJid(messages)}
+        groupJid={groupJidAtual}
         onSent={aoEnviar}
         draft={draft}
         onPedirRascunho={rotas.recursos.copiloto ? pedirRascunho : undefined}
+        replyTo={replyTo}
+        onCancelReply={() => setReplyTo(null)}
+        participantes={cabecalho.tipo === "grupo" ? participantes : undefined}
+        equipeInterna={equipeInterna}
+        onNotaCriada={(nota) => setNotasInternas((cur) => [...cur, nota])}
+        onTypingChange={setIsTypingLocal}
+        atendente={atendenteNome}
+        departamento={departamentoNome}
+        droppedFiles={droppedFiles}
+        onSendFailed={(item) =>
+          setFailedMsgs((cur) => [
+            ...cur,
+            { id: `fail-${Date.now()}-${Math.random().toString(36).slice(2)}`, ...item },
+          ])
+        }
         rascunho={
           suggest
             ? (usar) => (
@@ -595,6 +1104,149 @@ export function Timeline({
             : undefined
         }
       />
+
+      {forwardMsg && (
+        <ForwardModal
+          msg={forwardMsg}
+          onClose={() => setForwardMsg(null)}
+          onForwarded={() => {
+            setForwardMsg(null);
+            aoEnviar();
+          }}
+        />
+      )}
     </>
+  );
+}
+
+function ForwardModal({
+  msg,
+  onClose,
+  onForwarded,
+}: {
+  msg: MessageView;
+  onClose: () => void;
+  onForwarded: () => void;
+}) {
+  const rotas = useRotas();
+  const [alvos, setAlvos] = useState<Array<{ slug: string; nome: string; jid: string | null }>>([]);
+  const [busca, setBusca] = useState("");
+  const [enviandoSlug, setEnviandoSlug] = useState<string | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    if (rotas.modo === "dono") {
+      fetch("/api/groups/summary", { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : []))
+        .then((list: Array<{ slug: string; name: string; jid: string | null }>) => {
+          if (!alive || !Array.isArray(list)) return;
+          setAlvos(
+            list.map((g) => ({
+              slug: g.slug,
+              nome: g.name,
+              jid: g.jid ?? (g.slug.startsWith("dm-") ? `${g.slug.slice(3)}@s.whatsapp.net` : null),
+            })),
+          );
+        })
+        .catch(() => {});
+    } else {
+      fetch(rotas.fila, { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data: { conversas?: Array<{ slug: string; nome: string }> } | null) => {
+          if (!alive || !data?.conversas) return;
+          setAlvos(data.conversas.map((c) => ({ slug: c.slug, nome: c.nome, jid: null })));
+        })
+        .catch(() => {});
+    }
+    return () => {
+      alive = false;
+    };
+  }, [rotas]);
+
+  const filtrados = useMemo(() => alvos.filter((a) => casaBusca(a.nome, busca)).slice(0, 60), [alvos, busca]);
+
+  async function encaminharPara(alvo: { slug: string; nome: string; jid: string | null }) {
+    if (enviandoSlug) return;
+    const texto = msg.text?.trim() || (msg.mediaPath ? `[mídia encaminhada: ${msg.type}]` : "");
+    if (!texto) {
+      setErro("Mensagem sem conteúdo encaminhável.");
+      return;
+    }
+    const pedido = rotas.enviarTexto(alvo.slug, alvo.jid, texto);
+    if (!pedido) {
+      setErro("Destino indisponível para este chat.");
+      return;
+    }
+    setEnviandoSlug(alvo.slug);
+    setErro(null);
+    try {
+      const res = checarSessao(
+        await fetch(pedido.url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(pedido.body),
+        }),
+        rotas,
+      );
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!res.ok || !data.ok) throw new Error(data.error ?? "falha ao encaminhar");
+      onForwarded();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "erro ao encaminhar");
+      setEnviandoSlug(null);
+    }
+  }
+
+  return (
+    <div
+      className="overlay-in fixed inset-0 z-50 flex items-center justify-center bg-scrim p-4 backdrop-blur-[2px]"
+      onClick={onClose}
+      role="presentation"
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Encaminhar mensagem"
+        onClick={(e) => e.stopPropagation()}
+        className="pop-in flex max-h-[80vh] w-full max-w-md flex-col overflow-hidden rounded-[14px] border border-line bg-surface [box-shadow:var(--float)]"
+      >
+        <div className="flex items-center justify-between border-b border-line px-4 py-3">
+          <h3 className="text-[14.5px] font-semibold text-fg">Encaminhar mensagem</h3>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Fechar"
+            className="grid h-7 w-7 place-items-center rounded-[6px] text-fg-faint hover:bg-elevated hover:text-fg"
+          >
+            <Icone nome="x" tamanho={14} />
+          </button>
+        </div>
+        <div className="border-b border-line p-3">
+          <CampoBusca valor={busca} aoMudar={setBusca} placeholder="Buscar conversa destino…" rotulo="Buscar conversa" />
+          {erro && <p className="mt-2 text-[12px] text-danger">{erro}</p>}
+        </div>
+        <ul className="min-h-0 flex-1 divide-y divide-line overflow-y-auto">
+          {filtrados.length === 0 ? (
+            <li className="px-4 py-8 text-center text-[13px] text-fg-faint">Nenhuma conversa encontrada.</li>
+          ) : (
+            filtrados.map((a) => (
+              <li key={a.slug}>
+                <button
+                  type="button"
+                  disabled={enviandoSlug !== null}
+                  onClick={() => void encaminharPara(a)}
+                  className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-[13.5px] text-fg hover:bg-surface-2 disabled:opacity-50"
+                >
+                  <Avatar nome={a.nome} tipo={a.slug.startsWith("dm-") ? "dm" : "grupo"} tamanho="sm" />
+                  <span className="min-w-0 flex-1 truncate">{a.nome}</span>
+                  {enviandoSlug === a.slug && <span className="text-[12px] text-accent">Enviando…</span>}
+                </button>
+              </li>
+            ))
+          )}
+        </ul>
+      </div>
+    </div>
   );
 }

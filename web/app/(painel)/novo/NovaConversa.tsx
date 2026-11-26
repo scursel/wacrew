@@ -138,6 +138,20 @@ export function NovaConversa({ modo }: { modo: Modo }) {
     setEnviando(true);
     setErro(null);
     try {
+      if (modo === "contato" && (manual || !contato) && analise.valido) {
+        const verificacao = await pedirJson<{ exists: boolean; jid: string | null }>("/api/check-number", {
+          corpo: { number: analise.digitos },
+        });
+        if (!verificacao.exists) {
+          setErro("Este número não está cadastrado no WhatsApp.");
+          setEnviando(false);
+          return;
+        }
+        if (verificacao.jid) {
+          jid = verificacao.jid;
+          destino = `dm-${verificacao.jid.split("@")[0]}`;
+        }
+      }
       if (modo === "grupo" && grupo && !grupo.watch) {
         await pedirJson("/api/groups", { corpo: { id: grupo.id, watch: true } });
         await esperar(800);

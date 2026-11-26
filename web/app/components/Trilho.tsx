@@ -17,7 +17,7 @@ const icone = (d: React.ReactNode) => (
   </svg>
 );
 
-const SECOES: Array<{ href: string; rotulo: string; ativa: (p: string) => boolean; icone: React.ReactNode }> = [
+const SECOES: Array<{ href: string; rotulo: string; ativa: (p: string) => boolean; mobileOculto?: boolean; icone: React.ReactNode }> = [
   {
     href: "/",
     rotulo: "Hoje",
@@ -55,6 +55,7 @@ const SECOES: Array<{ href: string; rotulo: string; ativa: (p: string) => boolea
   {
     href: "/escritorio",
     rotulo: "Escritório",
+    mobileOculto: true,
     ativa: (p) => p.startsWith("/escritorio"),
     icone: icone(
       <>
@@ -66,6 +67,7 @@ const SECOES: Array<{ href: string; rotulo: string; ativa: (p: string) => boolea
   {
     href: "/agenda",
     rotulo: "Agenda",
+    mobileOculto: true,
     ativa: (p) => p.startsWith("/agenda"),
     icone: icone(
       <>
@@ -139,6 +141,8 @@ export function Trilho({ groups, usuario }: { groups: GroupSummary[]; usuario: s
             href={s.href}
             aria-current={ativa ? "page" : undefined}
             className={`${ITEM_BASE} w-[60px] pb-1.5 pt-2 max-[860px]:w-auto max-[860px]:max-w-[76px] max-[860px]:flex-1 ${
+              s.mobileOculto ? "max-[860px]:hidden " : ""
+            }${
               ativa
                 ? "bg-accent-soft text-fg before:scale-y-100 [&_svg]:text-accent"
                 : "text-fg-faint hover:bg-elevated hover:text-fg"

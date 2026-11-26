@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { NextResponse } from "next/server";
 import { readGroupRecords } from "@/lib/data";
 import { atendenteDoPedido, exigirChat, irmaosLiberados, respostaDeErro } from "@/lib/equipe/acesso";
-import { assinar, nomeDeQuemEnvia } from "@/lib/equipe/assinatura";
+import { assinar, deveAssinar, nomeDeQuemEnvia } from "@/lib/equipe/assinatura";
 import { destinoDoSlug } from "@/lib/equipe/destino";
 import { motivoDeRecusa, recentesDaConta, registrosDaConversa } from "@/lib/equipe/envio";
 import { registrarResposta } from "@/lib/equipe/quem";
@@ -27,6 +27,7 @@ export async function POST(req: Request) {
     exigirChat(a, slug);
     const kind = String(form.get("kind") ?? "");
     const file = form.get("file");
+    const quotedId = form.get("quotedId");
     const caption = typeof form.get("caption") === "string" ? String(form.get("caption")).trim() : "";
     if (!KINDS.has(kind)) return NextResponse.json({ error: "kind inválido" }, { status: 400 });
     if (!(file instanceof File) || file.size === 0) return NextResponse.json({ error: "arquivo ausente" }, { status: 400 });
@@ -44,7 +45,9 @@ export async function POST(req: Request) {
     abs = join(dir, randomUUID());
     await writeFile(abs, Buffer.from(await file.arrayBuffer()));
     // A revisão rodou na legenda crua; sem legenda, a assinatura vira a legenda.
-    const legenda = assinar(caption, await nomeDeQuemEnvia(a.usuario.login));
+    const legenda = (await deveAssinar(a.usuario.login))
+      ? assinar(caption, await nomeDeQuemEnvia(a.usuario.login))
+      : caption;
     const res = await fetch(`${CONTROL_URL}/send-media`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -53,6 +56,7 @@ export async function POST(req: Request) {
         caption: legenda,
         fileName: kind === "document" ? fileName : undefined,
         mimetype: file.type || mimeDoNome(fileName),
+        ...(typeof quotedId === "string" && quotedId ? { quotedId } : {}),
         ator: "painel", usuario: a.usuario.login,
       }),
     }).catch(() => null);

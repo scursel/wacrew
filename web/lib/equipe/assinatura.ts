@@ -26,3 +26,10 @@ export async function nomeDeQuemEnvia(usuario: string, nomeDono: () => Promise<s
   const u = await acharUsuario(usuario);
   return u?.nome || usuario;
 }
+
+/** True por padrão; só desativa quando `assinarMensagens === false` na conta do atendente. */
+export async function deveAssinar(usuario: string): Promise<boolean> {
+  if (usuario === process.env.PANEL_USER) return true;
+  const u = await acharUsuario(usuario);
+  return u?.assinarMensagens !== false;
+}

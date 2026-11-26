@@ -21,12 +21,14 @@ export function EditorEtiquetas({
   slug,
   atuais,
   conhecidas,
+  modoAtendimento = false,
   onSalvo,
   onFechar,
 }: {
   slug: string;
   atuais: string[];
   conhecidas: string[];
+  modoAtendimento?: boolean;
   onSalvo: (etiquetas: string[]) => void;
   onFechar: () => void;
 }) {
@@ -58,10 +60,12 @@ export function EditorEtiquetas({
   async function salvar(lista: string[]) {
     setSelecao(lista);
     onSalvo(lista);
-    await fetch("/api/triage", {
+    const url = modoAtendimento ? "/api/atendimento/etiquetas" : "/api/triage";
+    const body = modoAtendimento ? { slug, etiquetas: lista } : { action: "etiquetas", slug, value: lista };
+    await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "etiquetas", slug, value: lista }),
+      body: JSON.stringify(body),
     }).catch(() => {});
   }
 

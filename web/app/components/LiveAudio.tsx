@@ -4,6 +4,7 @@ import { type KeyboardEvent, type MouseEvent, useEffect, useMemo, useRef, useSta
 import { cn, Icone } from "./ui";
 
 const BARRAS = 34;
+const VELOCIDADES = [1, 1.5, 2] as const;
 
 /** Onda decorativa estável por arquivo: o mesmo áudio tem sempre o mesmo desenho. */
 function alturas(src: string): number[] {
@@ -30,8 +31,18 @@ export function LiveAudio({ src }: { src: string }) {
   const [duracao, setDuracao] = useState(0);
   const [posicao, setPosicao] = useState(0);
   const [falhou, setFalhou] = useState(false);
+  const [velIdx, setVelIdx] = useState(0);
+  const velocidade = VELOCIDADES[velIdx] ?? 1;
   const onda = useMemo(() => alturas(src), [src]);
   const fracao = duracao > 0 ? Math.min(1, posicao / duracao) : 0;
+
+  useEffect(() => {
+    if (ref.current) ref.current.playbackRate = velocidade;
+  }, [velocidade]);
+
+  function ciclarVelocidade() {
+    setVelIdx((i) => (i + 1) % VELOCIDADES.length);
+  }
 
   // O <audio> vem do servidor: a duração ou o erro podem chegar antes da hidratação.
   useEffect(() => {
@@ -106,6 +117,15 @@ export function LiveAudio({ src }: { src: string }) {
       <span className="shrink-0 font-mono text-[12px] tabular-nums text-fg-faint">
         {falhou ? "indisponível" : tempo(tocando || posicao > 0 ? posicao : duracao)}
       </span>
+      <button
+        type="button"
+        onClick={ciclarVelocidade}
+        title="Alterar velocidade de reprodução"
+        aria-label={`Velocidade ${velocidade}x`}
+        className="focus-ring shrink-0 rounded-tag border border-line bg-surface-2 px-1.5 py-0.5 font-mono text-[11px] font-medium text-fg-dim transition-colors hover:border-line-2 hover:text-fg"
+      >
+        {velocidade}x
+      </button>
       {/* biome-ignore lint/a11y/useMediaCaption: nota de voz não tem legenda */}
       <audio
         ref={ref}

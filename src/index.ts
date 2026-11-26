@@ -53,7 +53,7 @@ async function main(): Promise<void> {
   const store = new FileStore(env.DATA_DIR);
   const status = new StatusStore(env.DATA_DIR);
   const presence = new PresenceStore(env.DATA_DIR);
-  const collector = new Collector(store, groupConfig, presence);
+  const collector = new Collector(store, groupConfig, presence, env.DATA_DIR);
   const gateway = new BaileysGateway(env.AUTH_DIR, env.DATA_DIR, env.PAIR_NUMBER);
 
   // Publica o estado de conexão (QR/open/close) para o painel ler.
@@ -61,7 +61,7 @@ async function main(): Promise<void> {
   gateway.onStatus((s) => {
     if (s.connection === 'open') conectado = true;
     else if (s.connection) conectado = false;
-    void status.setConnection(s.connection, s.qr);
+    void status.setConnection(s.connection, s.qr, s.pairingCode);
   });
 
   // Fila de entregas humanizadas: tickets com latência humana, retomados no boot.

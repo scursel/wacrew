@@ -181,6 +181,7 @@ export class BaileysGateway implements WhatsAppGateway {
   private reconnectAttempts = 0;
   /** Código de pareamento já pedido neste socket (o QR gira, o pedido não repete). */
   private pairCodeRequested = false;
+  private lastQr: string | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   /** Mapa LID↔telefone↔nome persistido em `<DATA_DIR>/.contacts.json`. */
   private readonly contacts: ContactStore;
@@ -325,10 +326,24 @@ export class BaileysGateway implements WhatsAppGateway {
     return this.sock?.user?.id ? jidNormalizedUser(this.sock.user.id) : null;
   }
 
-  async sendText(jid: string, text: string, mentions?: string[], meta?: MetaEnvio): Promise<void> {
+  private resolveQuoted(jid: string, quotedId?: string): WAMessage | undefined {
+    if (!quotedId) return undefined;
+    const recente = this.recebidasRecentes.get(jid)?.find((m) => m.key.id === quotedId);
+    if (recente) return recente;
+    return { key: { remoteJid: jid, id: quotedId } } as WAMessage;
+  }
+
+  async sendText(
+    jid: string,
+    text: string,
+    mentions?: string[],
+    meta?: MetaEnvio,
+    quotedId?: string,
+  ): Promise<void> {
     if (!this.sock) throw new Error('Coletor não está conectado ao WhatsApp.');
     const content = mentions?.length ? { text, mentions } : { text };
-    const sent = await this.sock.sendMessage(jid, content);
+    const quoted = this.resolveQuoted(jid, quotedId);
+    const sent = await this.sock.sendMessage(jid, content, quoted ? { quoted } : undefined);
     this.echoSent(jid, sent, meta);
   }
 
@@ -338,20 +353,59 @@ export class BaileysGateway implements WhatsAppGateway {
     return result?.exists ? { exists: true, jid: result.jid } : { exists: false, jid: null };
   }
 
-  async sendMedia(jid: string, media: OutboundMedia, meta?: MetaEnvio): Promise<void> {
+  async requestPairingCode(phoneNumber: string): Promise<string> {
+    const digits = phoneNumber.replace(/\D/g, '');
+    if (!digits) throw new Error('number é obrigatório (dígitos com DDI)');
     if (!this.sock) throw new Error('Coletor não está conectado ao WhatsApp.');
+    const code = await this.sock.requestPairingCode(digits);
+    this.emitter.emit('status', {
+      connection: undefined,
+      qr: this.lastQr,
+      pairingCode: code,
+    } satisfies GatewayStatus);
+    return code;
+  }
+
+  async sendMedia(
+    jid: string,
+    media: OutboundMedia,
+    meta?: MetaEnvio,
+    quotedId?: string,
+  ): Promise<void> {
+    if (!this.sock) throw new Error('Coletor não está conectado ao WhatsApp.');
+    const quoted = this.resolveQuoted(jid, quotedId);
+    const opts = quoted ? { quoted } : undefined;
     if (media.kind !== 'audio') {
-      const sent = await this.sock.sendMessage(jid, toMessageContent(media));
+      const sent = await this.sock.sendMessage(jid, toMessageContent(media), opts);
       this.echoSent(jid, sent, meta);
       return;
     }
     const oggPath = await toOggOpus(media.path);
     try {
-      const sent = await this.sock.sendMessage(jid, toMessageContent({ ...media, path: oggPath }));
+      const sent = await this.sock.sendMessage(
+        jid,
+        toMessageContent({ ...media, path: oggPath }),
+        opts,
+      );
       this.echoSent(jid, sent, meta);
     } finally {
       await unlink(oggPath).catch(() => {});
     }
+  }
+
+  async deleteMessage(
+    jid: string,
+    key: { id: string; participant?: string; fromMe?: boolean },
+  ): Promise<void> {
+    if (!this.sock) throw new Error('Coletor não está conectado ao WhatsApp.');
+    const targetKey: WAMessageKey = {
+      remoteJid: jid,
+      id: key.id,
+      participant: key.participant,
+      fromMe: key.fromMe ?? true,
+    };
+    await this.sock.sendMessage(jid, { delete: targetKey });
+    this.handleRevoke(jid, key.id, { participant: key.participant });
   }
 
   async sendReaction(
@@ -459,7 +513,7 @@ export class BaileysGateway implements WhatsAppGateway {
               const quoted = passo.citar
                 ? this.recebidasRecentes.get(jid)?.find((m) => m.key.id === passo.citar)
                 : undefined;
-              const sent = await this.enviarBalao(jid, passo.texto, quoted, signal);
+              const sent = await this.enviarBalao(jid, passo.texto, quoted, signal, passo.mentions);
               if (!sent) {
                 cancelado = true;
                 break;
@@ -514,17 +568,19 @@ export class BaileysGateway implements WhatsAppGateway {
     texto: string,
     quoted: WAMessage | undefined,
     signal?: AbortSignal,
+    mentions?: string[],
   ): Promise<WAMessage | null> {
     const sock = await this.socketAtual(signal);
     if (!sock) return null;
+    const content = mentions?.length ? { text: texto, mentions } : { text: texto };
     const opts = quoted ? { quoted } : undefined;
     try {
-      return (await sock.sendMessage(jid, { text: texto }, opts)) ?? null;
+      return (await sock.sendMessage(jid, content, opts)) ?? null;
     } catch (e) {
       if (!(e instanceof Error && e.message === 'Connection Closed')) throw e;
       const novo = await this.socketAtual(signal, sock);
       if (!novo) return null;
-      return (await novo.sendMessage(jid, { text: texto }, opts)) ?? null;
+      return (await novo.sendMessage(jid, content, opts)) ?? null;
     }
   }
 
@@ -598,132 +654,145 @@ export class BaileysGateway implements WhatsAppGateway {
   }
 
   private async connect(): Promise<void> {
-    // Desliga o socket anterior (evita listeners/conexões órfãos a cada reconexão).
-    if (this.sock) {
-      try {
-        this.sock.ev.removeAllListeners('connection.update');
-        this.sock.ev.removeAllListeners('messages.upsert');
-        this.sock.ev.removeAllListeners('messages.reaction');
-        this.sock.ev.removeAllListeners('messages.update');
-        this.sock.ev.removeAllListeners('message-receipt.update');
-        this.sock.ev.removeAllListeners('contacts.upsert');
-        this.sock.ev.removeAllListeners('contacts.update');
-        this.sock.ev.removeAllListeners('lid-mapping.update');
-        this.sock.ev.removeAllListeners('messaging-history.set');
-        // Listeners de fundação adicionados em connect() — par obrigatório no
-        // teardown, senão vaza um listener a cada reconexão.
-        this.sock.ev.removeAllListeners('call');
-        this.sock.ev.removeAllListeners('groups.update');
-        this.sock.ev.removeAllListeners('group-participants.update');
-        this.sock.ev.removeAllListeners('chats.upsert');
-        this.sock.ev.removeAllListeners('chats.update');
-        this.sock.ev.removeAllListeners('chats.delete');
-        this.sock.ev.removeAllListeners('presence.update');
-        this.sock.ev.removeAllListeners('blocklist.set');
-        this.sock.ev.removeAllListeners('blocklist.update');
-        this.sock.ev.removeAllListeners('creds.update');
-        this.sock.end(undefined);
-      } catch {
-        // socket já morto — segue
-      }
-    }
-    // Nova conexão = novas subscriptions de presença (o servidor não lembra as antigas).
-    this.presenceSubscribed.clear();
-    const { state, saveCreds } = await useMultiFileAuthState(this.authDir);
-    const { version } = await fetchLatestBaileysVersion();
-    const sock = makeWASocket({
-      version,
-      auth: state,
-      logger: baileysLogger,
-      markOnlineOnConnect: false,
-      // Reenvio pedido pelo destinatário: o Baileys recriptografa o original.
-      getMessage: async (key) => this.mensagemEnviada(key),
-    });
-    this.sock = sock;
-
-    // Pareamento headless por código: o pedido é feito no primeiro QR que chega
-    // (ver onConnectionUpdate). Novo socket = pedido liberado de novo.
-    this.pairCodeRequested = false;
-
-    sock.ev.on('creds.update', saveCreds);
-    sock.ev.on('connection.update', (update) => this.onConnectionUpdate(update));
-    sock.ev.on('messages.upsert', (upsert) => {
-      void this.onMessagesUpsert(upsert).catch((err) =>
-        logger.error({ err }, 'Falha ao processar messages.upsert.'),
-      );
-    });
-    sock.ev.on('messages.reaction', (reactions) => this.onMessagesReaction(reactions));
-    sock.ev.on('messages.update', (updates) => this.onMessagesUpdate(updates));
-    sock.ev.on('message-receipt.update', (updates) => this.onMessageReceiptUpdate(updates));
-
-    // --- Captura de contatos (mapa LID↔telefone↔nome) ---
-    sock.ev.on('contacts.upsert', (contacts) => {
-      for (const c of contacts) this.contacts.mergeContact(c);
-    });
-    sock.ev.on('contacts.update', (updates) => {
-      for (const c of updates) this.contacts.mergeContact(c);
-    });
-    // Vínculo direto LID↔telefone publicado pela lib.
-    sock.ev.on('lid-mapping.update', (m) => {
-      if (m?.lid && m?.pn) this.contacts.mergeLidPn(m.lid, m.pn);
-    });
-    // History sync também traz contatos e mapeamentos LID/PN — e o acervo de
-    // mensagens, que agora indexamos pelo mesmo caminho do upsert (dedup por id).
-    sock.ev.on(
-      'messaging-history.set',
-      ({ contacts, lidPnMappings, messages, progress, isLatest, syncType }) => {
-        for (const c of contacts ?? []) this.contacts.mergeContact(c);
-        for (const m of lidPnMappings ?? []) {
-          if (m?.lid && m?.pn) this.contacts.mergeLidPn(m.lid, m.pn);
+    try {
+      // Desliga o socket anterior (evita listeners/conexões órfãos a cada reconexão).
+      if (this.sock) {
+        try {
+          this.sock.ev.removeAllListeners('connection.update');
+          this.sock.ev.removeAllListeners('messages.upsert');
+          this.sock.ev.removeAllListeners('messages.reaction');
+          this.sock.ev.removeAllListeners('messages.update');
+          this.sock.ev.removeAllListeners('message-receipt.update');
+          this.sock.ev.removeAllListeners('contacts.upsert');
+          this.sock.ev.removeAllListeners('contacts.update');
+          this.sock.ev.removeAllListeners('lid-mapping.update');
+          this.sock.ev.removeAllListeners('messaging-history.set');
+          // Listeners de fundação adicionados em connect() — par obrigatório no
+          // teardown, senão vaza um listener a cada reconexão.
+          this.sock.ev.removeAllListeners('call');
+          this.sock.ev.removeAllListeners('groups.update');
+          this.sock.ev.removeAllListeners('group-participants.update');
+          this.sock.ev.removeAllListeners('chats.upsert');
+          this.sock.ev.removeAllListeners('chats.update');
+          this.sock.ev.removeAllListeners('chats.delete');
+          this.sock.ev.removeAllListeners('presence.update');
+          this.sock.ev.removeAllListeners('blocklist.set');
+          this.sock.ev.removeAllListeners('blocklist.update');
+          this.sock.ev.removeAllListeners('creds.update');
+          this.sock.end(undefined);
+        } catch {
+          // socket já morto — segue
         }
-        logger.info(
-          {
-            count: messages?.length ?? 0,
-            progress: progress ?? null,
-            isLatest: isLatest ?? null,
-            syncType: syncType ?? null,
-          },
-          '📜 History sync recebido.',
-        );
-        void this.onHistorySet(messages).catch((err) =>
-          logger.error({ err }, 'Falha ao processar history sync.'),
-        );
-      },
-    );
-
-    // --- Listeners de fundação (ondas seguintes) — por ora só logam/persistem o mínimo ---
-    sock.ev.on('call', (calls) => this.onCallEvent(calls));
-    sock.ev.on('groups.update', (updates) => {
-      for (const g of updates) logger.debug({ id: g.id, subject: g.subject }, '👥 groups.update');
-    });
-    sock.ev.on('group-participants.update', (ev) => {
-      logger.debug(
-        { id: ev.id, action: ev.action, count: ev.participants?.length ?? 0 },
-        '👥 group-participants.update',
-      );
-    });
-    sock.ev.on('chats.upsert', (chats) => this.onChatsUpsert(chats));
-    sock.ev.on('chats.update', (updates) => this.onChatsUpdate(updates));
-    sock.ev.on('chats.delete', (ids) => {
-      logger.debug({ count: ids.length }, '💬 chats.delete');
-      for (const id of ids) {
-        // Tenta resolver o slug como grupo (subject) ou DM — usa o nome do grupo
-        // se conhecido; senão deriva o slug do jid diretamente.
-        const slug = this.groups.has(id)
-          ? this.slugFromJid(id)
-          : isDirectJid(id)
-            ? resolveConversation(id, id, null).conversationSlug
-            : this.slugFromJid(id);
-        this.chatStates.delete(slug);
       }
-    });
-    sock.ev.on('presence.update', (p) => this.onPresenceUpdate(p));
-    sock.ev.on('blocklist.set', (b) =>
-      logger.debug({ count: b.blocklist?.length ?? 0 }, '🚫 blocklist.set'),
-    );
-    sock.ev.on('blocklist.update', (b) =>
-      logger.debug({ type: b.type, count: b.blocklist?.length ?? 0 }, '🚫 blocklist.update'),
-    );
+      // Nova conexão = novas subscriptions de presença (o servidor não lembra as antigas).
+      this.presenceSubscribed.clear();
+      const { state, saveCreds } = await useMultiFileAuthState(this.authDir);
+      let version: Awaited<ReturnType<typeof fetchLatestBaileysVersion>>['version'] | undefined;
+      try {
+        ({ version } = await fetchLatestBaileysVersion());
+      } catch (err) {
+        logger.warn(
+          { err },
+          'Falha ao buscar versão mais recente do Baileys; usando padrão embutido.',
+        );
+      }
+      const sock = makeWASocket({
+        ...(version ? { version } : {}),
+        auth: state,
+        logger: baileysLogger,
+        markOnlineOnConnect: false,
+        // Reenvio pedido pelo destinatário: o Baileys recriptografa o original.
+        getMessage: async (key) => this.mensagemEnviada(key),
+      });
+      this.sock = sock;
+
+      // Pareamento headless por código: o pedido é feito no primeiro QR que chega
+      // (ver onConnectionUpdate). Novo socket = pedido liberado de novo.
+      this.pairCodeRequested = false;
+
+      sock.ev.on('creds.update', saveCreds);
+      sock.ev.on('connection.update', (update) => this.onConnectionUpdate(update));
+      sock.ev.on('messages.upsert', (upsert) => {
+        void this.onMessagesUpsert(upsert).catch((err) =>
+          logger.error({ err }, 'Falha ao processar messages.upsert.'),
+        );
+      });
+      sock.ev.on('messages.reaction', (reactions) => this.onMessagesReaction(reactions));
+      sock.ev.on('messages.update', (updates) => this.onMessagesUpdate(updates));
+      sock.ev.on('message-receipt.update', (updates) => this.onMessageReceiptUpdate(updates));
+
+      // --- Captura de contatos (mapa LID↔telefone↔nome) ---
+      sock.ev.on('contacts.upsert', (contacts) => {
+        for (const c of contacts) this.contacts.mergeContact(c);
+      });
+      sock.ev.on('contacts.update', (updates) => {
+        for (const c of updates) this.contacts.mergeContact(c);
+      });
+      // Vínculo direto LID↔telefone publicado pela lib.
+      sock.ev.on('lid-mapping.update', (m) => {
+        if (m?.lid && m?.pn) this.contacts.mergeLidPn(m.lid, m.pn);
+      });
+      // History sync também traz contatos e mapeamentos LID/PN — e o acervo de
+      // mensagens, que agora indexamos pelo mesmo caminho do upsert (dedup por id).
+      sock.ev.on(
+        'messaging-history.set',
+        ({ contacts, lidPnMappings, messages, progress, isLatest, syncType }) => {
+          for (const c of contacts ?? []) this.contacts.mergeContact(c);
+          for (const m of lidPnMappings ?? []) {
+            if (m?.lid && m?.pn) this.contacts.mergeLidPn(m.lid, m.pn);
+          }
+          logger.info(
+            {
+              count: messages?.length ?? 0,
+              progress: progress ?? null,
+              isLatest: isLatest ?? null,
+              syncType: syncType ?? null,
+            },
+            '📜 History sync recebido.',
+          );
+          void this.onHistorySet(messages).catch((err) =>
+            logger.error({ err }, 'Falha ao processar history sync.'),
+          );
+        },
+      );
+
+      // --- Listeners de fundação (ondas seguintes) — por ora só logam/persistem o mínimo ---
+      sock.ev.on('call', (calls) => this.onCallEvent(calls));
+      sock.ev.on('groups.update', (updates) => {
+        for (const g of updates) logger.debug({ id: g.id, subject: g.subject }, '👥 groups.update');
+      });
+      sock.ev.on('group-participants.update', (ev) => {
+        logger.debug(
+          { id: ev.id, action: ev.action, count: ev.participants?.length ?? 0 },
+          '👥 group-participants.update',
+        );
+      });
+      sock.ev.on('chats.upsert', (chats) => this.onChatsUpsert(chats));
+      sock.ev.on('chats.update', (updates) => this.onChatsUpdate(updates));
+      sock.ev.on('chats.delete', (ids) => {
+        logger.debug({ count: ids.length }, '💬 chats.delete');
+        for (const id of ids) {
+          // Tenta resolver o slug como grupo (subject) ou DM — usa o nome do grupo
+          // se conhecido; senão deriva o slug do jid diretamente.
+          const slug = this.groups.has(id)
+            ? this.slugFromJid(id)
+            : isDirectJid(id)
+              ? resolveConversation(id, id, null).conversationSlug
+              : this.slugFromJid(id);
+          this.chatStates.delete(slug);
+        }
+      });
+      sock.ev.on('presence.update', (p) => this.onPresenceUpdate(p));
+      sock.ev.on('blocklist.set', (b) =>
+        logger.debug({ count: b.blocklist?.length ?? 0 }, '🚫 blocklist.set'),
+      );
+      sock.ev.on('blocklist.update', (b) =>
+        logger.debug({ type: b.type, count: b.blocklist?.length ?? 0 }, '🚫 blocklist.update'),
+      );
+    } catch (err) {
+      logger.error({ err }, 'Falha ao conectar ao WhatsApp. Reagendando com backoff...');
+      if (!this.stopping) this.scheduleReconnect();
+    }
   }
 
   /**
@@ -1059,11 +1128,17 @@ export class BaileysGateway implements WhatsAppGateway {
     if (connection === 'close' && this.onClose(lastDisconnect)) {
       effective = 'logged_out';
     }
+    if (connection === 'open' || effective === 'logged_out') {
+      this.lastQr = null;
+    } else if (qr) {
+      this.lastQr = qr;
+    }
     // Publica o estado para o painel (QR aparece no navegador também).
     if (effective || qr) {
       this.emitter.emit('status', {
         connection: effective,
         qr: qr ?? null,
+        ...(connection === 'open' || effective === 'logged_out' ? { pairingCode: null } : {}),
       } satisfies GatewayStatus);
     }
   }
@@ -1082,13 +1157,35 @@ export class BaileysGateway implements WhatsAppGateway {
     this.pairCodeRequested = true;
     this.sock
       .requestPairingCode(this.pairNumber)
-      .then((code) =>
+      .then((code) => {
+        this.emitter.emit('status', {
+          connection: undefined,
+          qr: this.lastQr,
+          pairingCode: code,
+        } satisfies GatewayStatus);
         logger.info(
           { code },
           '🔗 Código de pareamento — WhatsApp › Aparelhos conectados › Conectar com número de telefone',
-        ),
-      )
+        );
+      })
       .catch((err) => logger.error({ err }, 'Falha ao gerar código de pareamento (use o QR).'));
+  }
+
+  /** Agenda reconexão com backoff exponencial + jitter. */
+  private scheduleReconnect(statusCode?: number): void {
+    if (this.stopping) return;
+    const base = Math.min(RECONNECT_MAX_MS, RECONNECT_BASE_MS * 2 ** this.reconnectAttempts);
+    const delayMs = Math.floor(base / 2 + (base / 2) * Math.random());
+    this.reconnectAttempts += 1;
+    logger.warn(
+      { statusCode, delayMs, attempt: this.reconnectAttempts },
+      '🔁 Conexão caiu. Reconectando com backoff...',
+    );
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      void this.connect();
+    }, delayMs);
   }
 
   /** Trata a queda de conexão. Retorna true quando a sessão foi invalidada. */
@@ -1103,19 +1200,7 @@ export class BaileysGateway implements WhatsAppGateway {
       void this.repair();
       return true;
     }
-    // Backoff exponencial com teto + jitter — evita loop apertado de reconexão.
-    const base = Math.min(RECONNECT_MAX_MS, RECONNECT_BASE_MS * 2 ** this.reconnectAttempts);
-    const delayMs = Math.floor(base / 2 + (base / 2) * Math.random());
-    this.reconnectAttempts += 1;
-    logger.warn(
-      { statusCode, delayMs, attempt: this.reconnectAttempts },
-      '🔁 Conexão caiu. Reconectando com backoff...',
-    );
-    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
-    this.reconnectTimer = setTimeout(() => {
-      this.reconnectTimer = null;
-      void this.connect();
-    }, delayMs);
+    this.scheduleReconnect(statusCode);
     return false;
   }
 

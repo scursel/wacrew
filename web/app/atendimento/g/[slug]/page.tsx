@@ -47,6 +47,7 @@ export default async function AtendimentoChat({ params }: { params: Promise<{ sl
       agora={Date.now()}
       atribuicao={atribuicao}
       resolvida={await estaResolvida(irmaos, undefined, registros)}
+      copilotoLiberado={Boolean(p.a.usuario.copilotoLiberado)}
     />
   );
 }

@@ -7,6 +7,8 @@ export interface CollectorStatus {
   connection: ConnectionState;
   /** String do QR para o painel renderizar; null quando não há pareamento pendente. */
   qr: string | null;
+  /** Código de pareamento por número quando gerado; null caso contrário. */
+  pairingCode: string | null;
   watchedCount: number;
   updatedAt: string;
 }
@@ -19,19 +21,30 @@ export class StatusStore {
   private readonly path: string;
   private connection: ConnectionState = 'unknown';
   private qr: string | null = null;
+  private pairingCode: string | null = null;
   private watchedCount = 0;
 
   constructor(dataDir: string) {
     this.path = join(dataDir, '.collector-status.json');
   }
 
-  async setConnection(connection: string | undefined, qr: string | null): Promise<void> {
+  async setConnection(
+    connection: string | undefined,
+    qr: string | null,
+    pairingCode?: string | null,
+  ): Promise<void> {
     this.qr = qr;
     if (qr) this.connection = 'qr';
     else if (connection === 'open') this.connection = 'open';
     else if (connection === 'connecting') this.connection = 'connecting';
     else if (connection === 'close') this.connection = 'close';
     else if (connection === 'logged_out') this.connection = 'logged_out';
+
+    if (connection === 'open' || connection === 'logged_out') {
+      this.pairingCode = null;
+    } else if (pairingCode !== undefined) {
+      this.pairingCode = pairingCode;
+    }
     await this.flush();
   }
 
@@ -44,6 +57,7 @@ export class StatusStore {
     const status: CollectorStatus = {
       connection: this.connection,
       qr: this.qr,
+      pairingCode: this.pairingCode,
       watchedCount: this.watchedCount,
       updatedAt: new Date().toISOString(),
     };

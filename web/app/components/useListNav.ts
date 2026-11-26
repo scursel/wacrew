@@ -101,11 +101,12 @@ export function useListNav(
         if ((itens[idx]?.naoLidas ?? 0) > 0) {
           setNavIndex(idx);
           requestAnimationFrame(() => scrollItemIntoView(idx));
+          router.push(rotas.chat(itens[idx]!.slug));
           return;
         }
       }
     },
-    [navIndex, itens, scrollItemIntoView],
+    [navIndex, itens, scrollItemIntoView, router, rotas],
   );
 
   useEffect(() => {

@@ -6,12 +6,19 @@ import { liberarLogin, limparDepartamento } from './atribuicoes';
 
 export type Comando =
   | { acao: 'criar'; login: string; nome: string; senha?: string }
-  | { acao: 'editar'; login: string; nome: string }
+  | {
+      acao: 'editar';
+      login: string;
+      nome: string;
+      copilotoLiberado?: boolean;
+      restringirDepartamentos?: boolean;
+      assinarMensagens?: boolean;
+    }
   | { acao: 'senha'; login: string; senha?: string }
   | { acao: 'ativo'; login: string; ativo: boolean }
   | { acao: 'apagar'; login: string }
-  | { acao: 'dep-criar'; nome: string; descricao?: string }
-  | { acao: 'dep-editar'; id: string; nome: string; descricao?: string }
+  | { acao: 'dep-criar'; nome: string; descricao?: string; roundRobin?: boolean }
+  | { acao: 'dep-editar'; id: string; nome: string; descricao?: string; roundRobin?: boolean }
   | { acao: 'dep-apagar'; id: string }
   | { acao: 'dep-membros'; id: string; membros: string[] }
   | { acao: 'nome-dono'; nome: string };
@@ -90,12 +97,13 @@ export async function executar(
         const d = lista.find((x) => x.id === c.id);
         if (!d) throw new Error('departamento inexistente');
         d.nome = nome; d.descricao = (c.descricao ?? '').trim();
+        if (typeof c.roundRobin === 'boolean') d.roundRobin = c.roundRobin;
       } else {
         const base = nome.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
         if (!base) throw new Error('nome de departamento inválido');
         let id = base; let n = 2;
         while (lista.some((d) => d.id === id)) id = `${base}-${n++}`;
-        lista.push({ id, nome, descricao: (c.descricao ?? '').trim(), membros: [] });
+        lista.push({ id, nome, descricao: (c.descricao ?? '').trim(), membros: [], ...(c.roundRobin ? { roundRobin: true } : {}) });
       }
     });
     return {};
@@ -169,6 +177,9 @@ export async function executar(
       const nome = c.nome.trim();
       if (!nome) throw new Error('nome é obrigatório');
       u.nome = nome;
+      if (typeof c.copilotoLiberado === 'boolean') u.copilotoLiberado = c.copilotoLiberado;
+      if (typeof c.restringirDepartamentos === 'boolean') u.restringirDepartamentos = c.restringirDepartamentos;
+      if (typeof c.assinarMensagens === 'boolean') u.assinarMensagens = c.assinarMensagens;
     } else if (c.acao === 'ativo') {
       u.ativo = c.ativo;
       u.versao += 1;

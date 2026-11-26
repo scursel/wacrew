@@ -32,13 +32,22 @@ export interface RotasPainel {
   fila: string;
   chat(slug: string): string;
   status: string;
+  respostasProntas: string;
+  busca(q: string, slug?: string): string;
   mensagens(slug: string, q?: ConsultaMensagens): string;
   presenca(slug: string): string;
   midia(mediaPath: string): string;
   transcrever(slug: string, mediaPath: string): Pedido;
   documento(slug: string, mediaPath: string): Pedido;
   reagir(slug: string, m: MsgAlvo, emoji: string): Pedido;
-  enviarTexto(slug: string, jid: string | null, texto: string): Pedido | null;
+  editar(slug: string, m: MsgAlvo, texto: string): Pedido;
+  apagar(slug: string, m: MsgAlvo): Pedido;
+  enviarTexto(
+    slug: string,
+    jid: string | null,
+    texto: string,
+    opts?: { mentions?: string[]; quotedId?: string },
+  ): Pedido | null;
   enviarMidia(slug: string, jid: string | null): { url: string; campos: Record<string, string> } | null;
   visto(slug: string, iso: string): Pedido;
   recursos: { copiloto: boolean; time: boolean };
@@ -64,6 +73,8 @@ const DONO: RotasPainel = {
   fila: '/api/caixa/fila',
   chat: (slug) => `/g/${slug}`,
   status: '/api/status',
+  respostasProntas: '/api/respostas-prontas',
+  busca: (q, slug) => `/api/busca?q=${enc(q)}${slug ? `&slug=${enc(slug)}` : ''}`,
   mensagens: (slug, q) => `/api/messages?${consulta(slug, q)}`,
   presenca: (slug) => `/api/presence?slug=${enc(slug)}`,
   midia: (p) => `/api/media/${caminho(p)}`,
@@ -73,7 +84,27 @@ const DONO: RotasPainel = {
     url: '/api/react',
     body: { jid: m.groupJid, msgId: m.id, participant: m.sender, fromMe: m.fromMe, emoji },
   }),
-  enviarTexto: (slug, jid, texto) => (jid ? { url: '/api/send', body: { jid, slug, text: texto } } : null),
+  editar: (_slug, m, texto) => ({
+    url: '/api/edit-message',
+    body: { jid: m.groupJid, msgId: m.id, text: texto },
+  }),
+  apagar: (_slug, m) => ({
+    url: '/api/delete-message',
+    body: { jid: m.groupJid, msgId: m.id, participant: m.sender, fromMe: m.fromMe },
+  }),
+  enviarTexto: (slug, jid, texto, opts) =>
+    jid
+      ? {
+          url: '/api/send',
+          body: {
+            jid,
+            slug,
+            text: texto,
+            ...(opts?.mentions?.length ? { mentions: opts.mentions } : {}),
+            ...(opts?.quotedId ? { citar: opts.quotedId } : {}),
+          },
+        }
+      : null,
   enviarMidia: (slug, jid) => (jid ? { url: '/api/send-media', campos: { jid, slug } } : null),
   visto: (slug, iso) => ({ url: '/api/triage', body: { action: 'lastSeen', slug, value: iso } }),
   recursos: { copiloto: true, time: true },
@@ -89,13 +120,25 @@ const ATENDIMENTO: RotasPainel = {
   fila: `${BASE}/fila`,
   chat: (slug) => `/atendimento/g/${slug}`,
   status: `${BASE}/status`,
+  respostasProntas: `${BASE}/respostas-prontas`,
+  busca: (q, slug) => `${BASE}/busca?q=${enc(q)}${slug ? `&slug=${enc(slug)}` : ''}`,
   mensagens: (slug, q) => `${BASE}/mensagens?${consulta(slug, q)}`,
   presenca: (slug) => `${BASE}/presenca?slug=${enc(slug)}`,
   midia: (p) => `${BASE}/midia/${caminho(p)}`,
   transcrever: (slug, mediaPath) => ({ url: `${BASE}/transcrever`, body: { slug, mediaPath } }),
   documento: (slug, mediaPath) => ({ url: `${BASE}/documento`, body: { slug, mediaPath } }),
   reagir: (slug, m, emoji) => ({ url: `${BASE}/reagir`, body: { slug, msgId: m.id, emoji } }),
-  enviarTexto: (slug, _jid, texto) => ({ url: `${BASE}/enviar`, body: { slug, texto } }),
+  editar: (slug, m, texto) => ({ url: `${BASE}/editar`, body: { slug, msgId: m.id, texto } }),
+  apagar: (slug, m) => ({ url: `${BASE}/apagar`, body: { slug, msgId: m.id } }),
+  enviarTexto: (slug, _jid, texto, opts) => ({
+    url: `${BASE}/enviar`,
+    body: {
+      slug,
+      texto,
+      ...(opts?.mentions?.length ? { mentions: opts.mentions } : {}),
+      ...(opts?.quotedId ? { citar: opts.quotedId } : {}),
+    },
+  }),
   enviarMidia: (slug) => ({ url: `${BASE}/enviar-midia`, campos: { slug } }),
   visto: (slug) => ({ url: `${BASE}/visto`, body: { slug } }),
   recursos: { copiloto: false, time: false },

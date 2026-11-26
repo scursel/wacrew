@@ -58,6 +58,7 @@ export interface PedidoEnvio {
   typos?: boolean;
   umBalao?: boolean;
   citar?: string;
+  mentions?: string[];
   urgencia?: Urgencia;
   origem: OrigemTicket;
   decorrido_s?: number;
@@ -231,6 +232,7 @@ export class FilaEnvio extends EventEmitter {
         umBalao: p.umBalao === true,
         urgencia: p.urgencia ?? 'normal',
         ...(p.citar ? { citar: p.citar } : {}),
+        ...(p.mentions?.length ? { mentions: p.mentions } : {}),
       },
       criadoEm: agora,
       lerEm: agora + Math.round(lat.esperaAteLer_s * 1000),
@@ -417,6 +419,7 @@ export class FilaEnvio extends EventEmitter {
         typos: t.opts.typos,
         msgRecebidaChars: ultima?.chars,
         ...(t.opts.citar ? { citar: t.opts.citar } : {}),
+        ...(t.opts.mentions?.length ? { mentions: t.opts.mentions } : {}),
         rng: this.rng,
       });
       this.presenca.aoEntregar();

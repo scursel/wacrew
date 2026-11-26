@@ -12,6 +12,7 @@ export const runtime = "nodejs";
 interface Body {
   jid?: string;
   text?: string;
+  mentions?: string[];
   humano?: boolean;
   slug?: string;
   typos?: boolean;
@@ -72,6 +73,7 @@ export async function POST(req: Request) {
         typos: body.typos === true,
         umBalao: body.umBalao === true,
         ...(baloesEnviados.length ? { baloes: baloesEnviados } : {}),
+        ...(Array.isArray(body.mentions) && body.mentions.length ? { mentions: body.mentions } : {}),
         ...(body.urgencia ? { urgencia: body.urgencia } : {}),
         ...(body.citar ? { citar: body.citar } : {}),
         ...(body.aguardar === true ? { aguardar: true } : {}),

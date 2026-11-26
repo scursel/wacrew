@@ -20,9 +20,10 @@ export function ContaCard({
 }) {
   const [renomeando, setRenomeando] = useState(false);
   const [nome, setNome] = useState(conta.nome);
-  const [ocupado, setOcupado] = useState<"nome" | "ativo" | null>(null);
+  type CampoOcupado = "nome" | "ativo" | "assinatura" | "restringir" | "copiloto";
+  const [ocupado, setOcupado] = useState<CampoOcupado | null>(null);
 
-  async function comOcupado(qual: "nome" | "ativo", fn: () => Promise<void>) {
+  async function comOcupado(qual: CampoOcupado, fn: () => Promise<void>) {
     setOcupado(qual);
     try {
       await fn();
@@ -83,10 +84,56 @@ export function ContaCard({
           { rotulo: "Departamentos", valor: departamentos.filter((d) => d.membros.includes(conta.login)).map((d) => d.nome).join(", ") || "Nenhum" },
           {
             rotulo: "Acesso",
-            valor: conta.ativo ? "Entra e vê todas as conversas" : "Bloqueado até você ativar de novo",
+            valor: !conta.ativo
+              ? "Bloqueado até você ativar de novo"
+              : conta.restringirDepartamentos
+                ? "Restrito aos seus departamentos e atribuídas"
+                : "Entra e vê todas as conversas",
           },
         ]}
       />
+
+      <div className="mt-4 flex flex-col gap-2.5 rounded-control border border-line bg-surface-2 p-3 text-[12.5px]">
+        <label className="flex cursor-pointer items-center justify-between gap-3 text-fg">
+          <span>Assinar mensagens (*{conta.nome}:*)</span>
+          <input
+            type="checkbox"
+            checked={conta.assinarMensagens !== false}
+            disabled={ocupado !== null}
+            onChange={(e) =>
+              void comOcupado("assinatura", async () => {
+                await rodar({ acao: "editar", login: conta.login, nome: conta.nome, assinarMensagens: e.target.checked });
+              })
+            }
+          />
+        </label>
+        <label className="flex cursor-pointer items-center justify-between gap-3 text-fg">
+          <span>Restringir fila aos departamentos do agente</span>
+          <input
+            type="checkbox"
+            checked={Boolean(conta.restringirDepartamentos)}
+            disabled={ocupado !== null}
+            onChange={(e) =>
+              void comOcupado("restringir", async () => {
+                await rodar({ acao: "editar", login: conta.login, nome: conta.nome, restringirDepartamentos: e.target.checked });
+              })
+            }
+          />
+        </label>
+        <label className="flex cursor-pointer items-center justify-between gap-3 text-fg">
+          <span>Liberar Copiloto IA na conversa</span>
+          <input
+            type="checkbox"
+            checked={Boolean(conta.copilotoLiberado)}
+            disabled={ocupado !== null}
+            onChange={(e) =>
+              void comOcupado("copiloto", async () => {
+                await rodar({ acao: "editar", login: conta.login, nome: conta.nome, copilotoLiberado: e.target.checked });
+              })
+            }
+          />
+        </label>
+      </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
         {!renomeando && (

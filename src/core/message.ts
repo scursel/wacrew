@@ -22,6 +22,8 @@ export interface GatewayStatus {
   connection: string | undefined;
   /** String do QR quando há pareamento pendente; senão null. */
   qr: string | null;
+  /** Código de pareamento por telefone quando solicitado; null limpa. */
+  pairingCode?: string | null;
 }
 
 /**
@@ -56,6 +58,13 @@ export interface MetaEnvio {
   usuario: string;
 }
 
+export interface StructuredLocation {
+  lat: number;
+  lng: number;
+  name?: string | null;
+  address?: string | null;
+}
+
 /** Mensagem normalizada (independente do Baileys), pronta para ser processada. */
 export interface InboundMessage {
   /** ID da mensagem (key.id) — usado para dedup. */
@@ -83,10 +92,18 @@ export interface InboundMessage {
   type: MessageType;
   /** Corpo do texto ou legenda da mídia; '' quando não há. */
   text: string;
+  /** ID (stanzaId) da mensagem citada (reply), se houver. */
+  quotedId?: string | null;
   /** Texto da mensagem citada (reply), se houver. */
   quotedText: string | null;
   /** JID de quem escreveu a mensagem citada (reply), se houver. */
   quotedSender: string | null;
+  /** Localização estruturada (latitude/longitude), quando presente. */
+  location?: StructuredLocation;
+  /** vCard bruto (contato compartilhado), quando presente. */
+  vcard?: string | null;
+  /** Nome de exibição do contato compartilhado (vCard), quando presente. */
+  contactName?: string | null;
   media: MediaDescriptor | null;
   /** Duração em segundos (vídeo/áudio), quando o WhatsApp informa. */
   duracao_s?: number;
@@ -251,8 +268,12 @@ export interface MessageRecord {
   fromMe: boolean;
   type: MessageType;
   text: string;
+  quotedId?: string | null;
   quotedText: string | null;
   quotedSender: string | null;
+  location?: StructuredLocation;
+  vcard?: string | null;
+  contactName?: string | null;
   /** Caminho relativo do arquivo de mídia (a partir de DATA_DIR), ou null. */
   mediaPath: string | null;
   duracao_s?: number;

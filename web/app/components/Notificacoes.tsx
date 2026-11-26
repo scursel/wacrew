@@ -11,6 +11,7 @@ import type {
   NotificacaoItem,
 } from "@/lib/notificacoes";
 import { useRotas } from "./RotasPainel";
+import { useTempoReal } from "./TempoRealProvider";
 import { haQuanto } from "./tempo";
 import { Avatar } from "./ui/Avatar";
 import { Icone } from "./ui/Icone";
@@ -86,13 +87,24 @@ export function Notificacoes({ groups }: { groups: GroupMeta[] }) {
   const router = useRouter();
   const pathname = usePathname();
   const rotas = useRotas();
+  const tempoReal = useTempoReal();
 
   const [aberto, setAberto] = useState(false);
   const [aba, setAba] = useState<AbaFiltro>("todas");
   const [itens, setItens] = useState<NotificacaoItem[]>([]);
   const [vistoEm, setVistoEm] = useState<string>("");
   const [alertaNativo, setAlertaNativo] = useState(false);
+  const [rotuloSO, setRotuloSO] = useState("Alerta no navegador");
   const [toast, setToast] = useState<NotificacaoItem | null>(null);
+
+  useEffect(() => {
+    const ua = navigator.userAgent || "";
+    const plat = navigator.platform || "";
+    if (/Mac/i.test(plat) || /Macintosh|Mac OS/i.test(ua)) setRotuloSO("Alerta no Mac");
+    else if (/Win/i.test(plat) || /Windows/i.test(ua)) setRotuloSO("Alerta no Windows");
+    else if (/Linux/i.test(plat) || /Linux/i.test(ua)) setRotuloSO("Alerta no Linux");
+    else setRotuloSO("Alerta no navegador");
+  }, []);
 
   const gatilhoRef = useRef<HTMLButtonElement>(null);
   const painelRef = useRef<HTMLDivElement>(null);
@@ -198,64 +210,120 @@ export function Notificacoes({ groups }: { groups: GroupMeta[] }) {
       })
       .catch(() => {});
 
+    const processarMensagem = (msg: {
+      id?: string;
+      slug?: string;
+      group?: string;
+      senderName?: string;
+      fromMe?: boolean;
+      origem?: string;
+      ator?: string;
+      type?: string;
+      text?: string;
+      timestamp?: string;
+    }) => {
+      if (msg.fromMe && msg.origem === "coletor" && msg.ator !== "painel") return;
+      const slug = msg.slug?.trim();
+      if (!slug) return;
+      const meta = porSlugRef.current.get(slug);
+      if (meta?.muted) return;
+      const chatNome = meta?.name || msg.group?.trim() || slug;
+      const timestamp = msg.timestamp || new Date().toISOString();
+
+      if (!msg.fromMe) {
+        const novo: NotificacaoItem = {
+          id: msg.id || `msg:${slug}:${timestamp}`,
+          tipo: "mensagem",
+          slug,
+          chatNome,
+          remetente: msg.senderName?.trim() || chatNome,
+          texto: previaMensagem(msg),
+          timestamp,
+        };
+        setItens((atuais) => {
+          const filtrados = atuais.filter((i) => i.id !== novo.id);
+          return [novo, ...filtrados].slice(0, MAX_ITENS);
+        });
+        if (!chatEstaAberto(slug)) {
+          setToast(novo);
+          dispararAlertaNavegador(novo);
+        }
+      } else if (msg.origem === "ia_meta" || msg.origem === "ia") {
+        const novo: NotificacaoItem = {
+          id: `ia:${msg.id || `${slug}:${timestamp}`}`,
+          tipo: "sistema",
+          slug,
+          chatNome,
+          remetente: "IA",
+          texto: textoEntrega("entregue", msg.text),
+          timestamp,
+          estado: "entregue",
+        };
+        setItens((atuais) => {
+          const filtrados = atuais.filter((i) => i.id !== novo.id);
+          return [novo, ...filtrados].slice(0, MAX_ITENS);
+        });
+      }
+    };
+
+    const processarEntrega = (raw: EventoEntregaCru) => {
+      const slug = raw.slug?.trim();
+      if (!slug) return;
+      const meta = porSlugRef.current.get(slug);
+      if (meta?.muted) return;
+      const estado = normalizarEstado(raw.estado, raw.motivo);
+      if (!estado) return;
+      const chatNome = meta?.name || raw.chatNome?.trim() || slug;
+      const timestamp = raw.ts?.trim() || raw.timestamp?.trim() || new Date().toISOString();
+      const previa =
+        raw.texto?.trim() ||
+        raw.previa?.trim() ||
+        (Array.isArray(raw.baloes) ? raw.baloes.join(" ") : "");
+      const ticketId = raw.ticket?.trim() || raw.id?.trim() || `${slug}:${timestamp}:${estado}`;
+      const novo: NotificacaoItem = {
+        id: `entrega:${ticketId}`,
+        tipo: "sistema",
+        slug,
+        chatNome,
+        remetente: "IA",
+        texto: textoEntrega(estado, previa),
+        timestamp,
+        estado,
+      };
+      setItens((atuais) => {
+        const filtrados = atuais.filter((i) => i.id !== novo.id);
+        return [novo, ...filtrados].slice(0, MAX_ITENS);
+      });
+      if (
+        estado === "entregue" ||
+        estado === "interrompida" ||
+        estado === "falhou" ||
+        estado === "entregando"
+      ) {
+        setToast(novo);
+        if (estado === "interrompida" || estado === "falhou") {
+          dispararAlertaNavegador(novo);
+        }
+      }
+    };
+
+    if (tempoReal) {
+      const unsub = tempoReal.assinar((ev) => {
+        if (ev.tipo === "message") processarMensagem(ev.data as Parameters<typeof processarMensagem>[0]);
+        else if (ev.tipo === "entrega") processarEntrega(ev.data as EventoEntregaCru);
+      });
+      return () => {
+        cancelado = true;
+        unsub();
+      };
+    }
+
     if (typeof EventSource === "undefined") return () => {};
     const es = new EventSource("/api/events?todos=1&ocultar=coletor");
 
     es.onmessage = (ev) => {
       try {
-        const msg = JSON.parse(ev.data) as {
-          id?: string;
-          slug?: string;
-          group?: string;
-          senderName?: string;
-          fromMe?: boolean;
-          origem?: string;
-          ator?: string;
-          type?: string;
-          text?: string;
-          timestamp?: string;
-        };
-        const slug = msg.slug?.trim();
-        if (!slug) return;
-        const meta = porSlugRef.current.get(slug);
-        if (meta?.muted) return;
-        const chatNome = meta?.name || msg.group?.trim() || slug;
-        const timestamp = msg.timestamp || new Date().toISOString();
-
-        if (!msg.fromMe) {
-          const novo: NotificacaoItem = {
-            id: msg.id || `msg:${slug}:${timestamp}`,
-            tipo: "mensagem",
-            slug,
-            chatNome,
-            remetente: msg.senderName?.trim() || chatNome,
-            texto: previaMensagem(msg),
-            timestamp,
-          };
-          setItens((atuais) => {
-            const filtrados = atuais.filter((i) => i.id !== novo.id);
-            return [novo, ...filtrados].slice(0, MAX_ITENS);
-          });
-          if (!chatEstaAberto(slug)) {
-            setToast(novo);
-            dispararAlertaNavegador(novo);
-          }
-        } else if (msg.origem === "ia_meta" || msg.origem === "ia") {
-          const novo: NotificacaoItem = {
-            id: `ia:${msg.id || `${slug}:${timestamp}`}`,
-            tipo: "sistema",
-            slug,
-            chatNome,
-            remetente: "IA",
-            texto: textoEntrega("entregue", msg.text),
-            timestamp,
-            estado: "entregue",
-          };
-          setItens((atuais) => {
-            const filtrados = atuais.filter((i) => i.id !== novo.id);
-            return [novo, ...filtrados].slice(0, MAX_ITENS);
-          });
-        }
+        processarMensagem(JSON.parse(ev.data) as Parameters<typeof processarMensagem>[0]);
       } catch {
         /* ignora frame malformado */
       }
@@ -263,45 +331,7 @@ export function Notificacoes({ groups }: { groups: GroupMeta[] }) {
 
     const onEntrega = (ev: Event) => {
       try {
-        const raw = JSON.parse((ev as MessageEvent).data) as EventoEntregaCru;
-        const slug = raw.slug?.trim();
-        if (!slug) return;
-        const meta = porSlugRef.current.get(slug);
-        if (meta?.muted) return;
-        const estado = normalizarEstado(raw.estado, raw.motivo);
-        if (!estado) return;
-        const chatNome = meta?.name || raw.chatNome?.trim() || slug;
-        const timestamp = raw.ts?.trim() || raw.timestamp?.trim() || new Date().toISOString();
-        const previa =
-          raw.texto?.trim() ||
-          raw.previa?.trim() ||
-          (Array.isArray(raw.baloes) ? raw.baloes.join(" ") : "");
-        const ticketId = raw.ticket?.trim() || raw.id?.trim() || `${slug}:${timestamp}:${estado}`;
-        const novo: NotificacaoItem = {
-          id: `entrega:${ticketId}`,
-          tipo: "sistema",
-          slug,
-          chatNome,
-          remetente: "IA",
-          texto: textoEntrega(estado, previa),
-          timestamp,
-          estado,
-        };
-        setItens((atuais) => {
-          const filtrados = atuais.filter((i) => i.id !== novo.id);
-          return [novo, ...filtrados].slice(0, MAX_ITENS);
-        });
-        if (
-          estado === "entregue" ||
-          estado === "interrompida" ||
-          estado === "falhou" ||
-          estado === "entregando"
-        ) {
-          setToast(novo);
-          if (estado === "interrompida" || estado === "falhou") {
-            dispararAlertaNavegador(novo);
-          }
-        }
+        processarEntrega(JSON.parse((ev as MessageEvent).data) as EventoEntregaCru);
       } catch {
         /* ignora */
       }
@@ -313,7 +343,7 @@ export function Notificacoes({ groups }: { groups: GroupMeta[] }) {
       es.removeEventListener("entrega", onEntrega);
       es.close();
     };
-  }, [chatEstaAberto, dispararAlertaNavegador]);
+  }, [chatEstaAberto, dispararAlertaNavegador, tempoReal]);
 
   useEffect(() => {
     if (!aberto) return;
@@ -351,16 +381,8 @@ export function Notificacoes({ groups }: { groups: GroupMeta[] }) {
   }, [aba, itens]);
 
   const alternarPainel = useCallback(() => {
-    setAberto((atual) => {
-      const proximo = !atual;
-      if (proximo) {
-        const maisRecente = itens[0]?.timestamp;
-        const agoraIso = new Date().toISOString();
-        salvarVisto(maisRecente && maisRecente > agoraIso ? maisRecente : agoraIso);
-      }
-      return proximo;
-    });
-  }, [itens, salvarVisto]);
+    setAberto((atual) => !atual);
+  }, []);
 
   const alternarAlertaNativo = useCallback(async () => {
     if (alertaNativo) {
@@ -488,7 +510,7 @@ export function Notificacoes({ groups }: { groups: GroupMeta[] }) {
               role="switch"
               aria-checked={alertaNativo}
               onClick={alternarAlertaNativo}
-              title="Disparar notificação nativa do Mac/navegador quando chegar mensagem nova"
+              title={`Disparar notificação nativa (${rotuloSO}) quando chegar mensagem nova`}
               className={`flex items-center gap-1 rounded-[6px] px-2 py-1 text-[11px] font-medium transition-colors ${
                 alertaNativo
                   ? "bg-accent-soft text-accent"
@@ -496,7 +518,7 @@ export function Notificacoes({ groups }: { groups: GroupMeta[] }) {
               }`}
             >
               <Icone nome="bell" tamanho={12} />
-              <span>Alerta no Mac</span>
+              <span>{rotuloSO}</span>
             </button>
           </div>
 

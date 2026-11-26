@@ -136,6 +136,28 @@ function DepartamentoItem({ departamento, usuarios, rodar }: {
           </div>
         )}
       </fieldset>
+      <label className="mt-3 flex cursor-pointer items-center gap-2 border-t border-line pt-3 text-[12.5px] text-fg-dim">
+        <input
+          type="checkbox"
+          checked={Boolean(departamento.roundRobin)}
+          disabled={ocupado}
+          onChange={async (e) => {
+            setOcupado(true);
+            try {
+              await rodar({
+                acao: "dep-editar",
+                id: departamento.id,
+                nome: departamento.nome,
+                descricao: departamento.descricao,
+                roundRobin: e.target.checked,
+              });
+            } finally {
+              setOcupado(false);
+            }
+          }}
+        />
+        <span>Distribuição automática (round-robin entre membros online)</span>
+      </label>
     </section>
   );
 }

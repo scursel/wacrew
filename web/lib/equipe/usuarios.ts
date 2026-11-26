@@ -16,6 +16,9 @@ export interface Usuario {
   chats: string[];
   criadoEm: string;
   ultimoAcesso: string | null;
+  copilotoLiberado?: boolean;
+  restringirDepartamentos?: boolean;
+  assinarMensagens?: boolean;
 }
 
 export type UsuarioPublico = Omit<Usuario, 'senha'>;

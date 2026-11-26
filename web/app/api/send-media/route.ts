@@ -36,6 +36,7 @@ export async function POST(req: Request) {
   const caption = form.get("caption");
   const file = form.get("file");
   const slug = form.get("slug");
+  const quotedId = form.get("quotedId");
 
   if (typeof jid !== "string" || !jid) {
     return NextResponse.json({ error: "jid é obrigatório" }, { status: 400 });
@@ -79,6 +80,7 @@ export async function POST(req: Request) {
         caption: legendaEnviada || undefined,
         fileName: kind === "document" ? fileName : undefined,
         mimetype: file.type || mimeDoNome(fileName),
+        ...(typeof quotedId === "string" && quotedId ? { quotedId } : {}),
         ...(meta ?? {}),
       }),
     });

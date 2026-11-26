@@ -84,6 +84,9 @@ export function mapMessage(
   // Duração (vídeo/áudio) e páginas (documento) dão o tempo de assistir/ler na latência.
   let duracao: number | null | undefined;
   let paginas: number | null | undefined;
+  let location: InboundMessage['location'];
+  let vcard: string | null | undefined;
+  let contactName: string | null | undefined;
 
   switch (ctype) {
     case 'conversation':
@@ -127,22 +130,59 @@ export function mapMessage(
       type = 'sticker';
       media = buildMediaDescriptor('sticker', content.stickerMessage?.mimetype, null, wa, sock);
       break;
-    case 'locationMessage':
+    case 'locationMessage': {
       type = 'location';
-      text = describeLocation(content.locationMessage);
+      const loc = content.locationMessage;
+      text = describeLocation(loc);
+      if (
+        typeof loc?.degreesLatitude === 'number' &&
+        Number.isFinite(loc.degreesLatitude) &&
+        typeof loc?.degreesLongitude === 'number' &&
+        Number.isFinite(loc.degreesLongitude)
+      ) {
+        location = {
+          lat: loc.degreesLatitude,
+          lng: loc.degreesLongitude,
+          name: loc.name?.trim() || null,
+          address: loc.address?.trim() || null,
+        };
+      }
       break;
-    case 'liveLocationMessage':
+    }
+    case 'liveLocationMessage': {
       type = 'location';
-      text = describeLiveLocation(content.liveLocationMessage);
+      const loc = content.liveLocationMessage;
+      text = describeLiveLocation(loc);
+      if (
+        typeof loc?.degreesLatitude === 'number' &&
+        Number.isFinite(loc.degreesLatitude) &&
+        typeof loc?.degreesLongitude === 'number' &&
+        Number.isFinite(loc.degreesLongitude)
+      ) {
+        location = {
+          lat: loc.degreesLatitude,
+          lng: loc.degreesLongitude,
+          name: loc.caption?.trim() || null,
+          address: null,
+        };
+      }
       break;
+    }
     case 'contactMessage':
       type = 'contact';
       text = describeContact(content.contactMessage);
+      vcard = content.contactMessage?.vcard ?? null;
+      contactName = content.contactMessage?.displayName?.trim() || null;
       break;
-    case 'contactsArrayMessage':
+    case 'contactsArrayMessage': {
       type = 'contact';
       text = describeContactsArray(content.contactsArrayMessage);
+      const first = content.contactsArrayMessage?.contacts?.[0];
+      vcard = first?.vcard ?? null;
+      contactName =
+        first?.displayName?.trim() || content.contactsArrayMessage?.displayName?.trim() || null;
       break;
+    }
     case 'pollCreationMessage':
     case 'pollCreationMessageV2':
     case 'pollCreationMessageV3':
@@ -180,8 +220,12 @@ export function mapMessage(
     timestamp: toDate(wa.messageTimestamp),
     type,
     text,
+    ...(quoted.id ? { quotedId: quoted.id } : {}),
     quotedText: quoted.text,
     quotedSender: quoted.sender,
+    ...(location ? { location } : {}),
+    ...(vcard ? { vcard } : {}),
+    ...(contactName ? { contactName } : {}),
     media,
     ...(duracao && duracao > 0 ? { duracao_s: duracao } : {}),
     ...(paginas && paginas > 0 ? { paginas } : {}),
@@ -518,18 +562,24 @@ function describeEvent(e: proto.Message.IEventMessage | null | undefined): strin
 function extractQuoted(
   content: proto.IMessage,
   ctype: keyof proto.IMessage,
-): { text: string | null; sender: string | null } {
+): { id: string | null; text: string | null; sender: string | null } {
   const node = (content as Record<string, unknown>)[ctype] as
-    | { contextInfo?: { quotedMessage?: proto.IMessage; participant?: string | null } }
+    | {
+        contextInfo?: {
+          stanzaId?: string | null;
+          quotedMessage?: proto.IMessage;
+          participant?: string | null;
+        };
+      }
     | undefined;
   const ctx = node?.contextInfo;
   const quoted = ctx?.quotedMessage;
-  if (!quoted) return { text: null, sender: null };
+  if (!quoted) return { id: null, text: null, sender: null };
   const text =
     quoted.conversation ??
     quoted.extendedTextMessage?.text ??
     quoted.imageMessage?.caption ??
     quoted.videoMessage?.caption ??
     '[mídia citada]';
-  return { text, sender: ctx?.participant || null };
+  return { id: ctx?.stanzaId || null, text, sender: ctx?.participant || null };
 }

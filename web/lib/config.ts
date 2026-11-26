@@ -87,6 +87,7 @@ export async function setGroupTags(id: string, tagList: string[]): Promise<Group
 export interface CollectorStatus {
   connection: 'open' | 'connecting' | 'qr' | 'close' | 'logged_out' | 'unknown' | 'offline';
   qr: string | null;
+  pairingCode: string | null;
   watchedCount: number;
   updatedAt: string | null;
 }
@@ -94,6 +95,7 @@ export interface CollectorStatus {
 const OFFLINE: CollectorStatus = {
   connection: 'offline',
   qr: null,
+  pairingCode: null,
   watchedCount: 0,
   updatedAt: null,
 };
@@ -105,6 +107,7 @@ export async function readStatus(): Promise<CollectorStatus> {
     return {
       connection: parsed.connection ?? 'unknown',
       qr: parsed.qr ?? null,
+      pairingCode: parsed.pairingCode ?? null,
       watchedCount: parsed.watchedCount ?? 0,
       updatedAt: parsed.updatedAt ?? null,
     };

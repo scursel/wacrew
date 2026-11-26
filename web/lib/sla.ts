@@ -67,12 +67,31 @@ export const BAND_BORDER_CLASS: Record<SlaBand, string> = {
   hot:   "border-l-[color:color-mix(in_oklab,var(--color-danger)_55%,transparent)]",
 };
 
+import { calcularEsperaComercialMs, type ExpedienteWebConfig } from './expediente-comum';
+
 /**
  * Constrói SlaInfo a partir de um timestamp ISO (waitingSince já calculado)
  * e do `now` atual (passado como parâmetro para consistência server-side).
  */
 export function buildSlaInfo(waitingSince: string, now: number): SlaInfo {
   const waitingMs = Math.max(0, now - new Date(waitingSince).getTime());
+  const band = getBand(waitingMs);
+  const label = relativeLabel(waitingMs);
+  return { waitingSince, waitingMs, band, label };
+}
+
+/**
+ * Variante ciente de horário comercial: usa o tempo decorrido dentro do expediente
+ * quando `cfg.ativo` estiver ligado.
+ */
+export function buildSlaInfoComercial(
+  waitingSince: string,
+  now: number,
+  cfg?: ExpedienteWebConfig | null,
+): SlaInfo {
+  const waitingMs = cfg?.ativo
+    ? calcularEsperaComercialMs(waitingSince, now, cfg)
+    : Math.max(0, now - new Date(waitingSince).getTime());
   const band = getBand(waitingMs);
   const label = relativeLabel(waitingMs);
   return { waitingSince, waitingMs, band, label };

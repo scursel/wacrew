@@ -222,6 +222,29 @@ export function KanbanBoard({
                     className={arrastando === c.slug ? "opacity-40" : ""}
                   >
                     <CartaoCliente c={c} conhecidas={conhecidas} />
+                    {kanban.colunas.length > 1 && (
+                      <div className="mt-1 hidden px-1 max-[860px]:block">
+                        <select
+                          aria-label={`Mover ${c.nome} para coluna`}
+                          value={col.id}
+                          onChange={(e) => {
+                            const colunaId = e.target.value;
+                            if (colunaId === col.id) return;
+                            const cartoes = { ...kanban.cartoes };
+                            if (colunaId === kanban.colunas[0]?.id) delete cartoes[c.slug];
+                            else cartoes[c.slug] = colunaId;
+                            void aplicar({ ...kanban, cartoes }, { acao: "mover", slug: c.slug, colunaId });
+                          }}
+                          className="w-full rounded-[6px] border border-line bg-surface-2 px-2 py-1 text-[11.5px] text-fg-dim"
+                        >
+                          {kanban.colunas.map((dest) => (
+                            <option key={dest.id} value={dest.id}>
+                              {dest.id === col.id ? `Coluna: ${dest.nome}` : `Mover para ${dest.nome}`}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

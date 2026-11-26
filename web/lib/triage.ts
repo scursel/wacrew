@@ -8,12 +8,17 @@ import { slugify } from './slug';
 export type AgenteModo = 'off' | 'issue' | 'pr';
 /** Quem executa a issue quando o operador aprova: ausente = 'claude'. */
 export type AgenteExecutor = 'claude' | 'copilot';
+/** Ciclo de vida explícito da conversa na inbox. */
+export type StatusConversa = 'aberta' | 'pendente' | 'adiada' | 'resolvida';
 
 /** Estado de triagem do painel (slug = grupo). Arquivo do painel; o coletor não toca. */
 const TRIAGE_FILE = join(DATA_DIR, '.triage.json');
 
 export interface TriageState {
   resolved: Record<string, string>; // slug -> ISO timestamp "resolvido até aqui"
+  status: Record<string, StatusConversa>; // slug -> status explícito na inbox
+  snoozedUntil: Record<string, string>; // slug -> ISO timestamp até quando adiada
+  markedUnread: Record<string, boolean>; // slug -> marcada manualmente como não lida
   muted: Record<string, boolean>; // slug -> silenciado (coleta mas não alerta)
   notes: Record<string, string>; // slug -> notas livres (mini-CRM)
   lastSeen: Record<string, string>; // slug -> ISO timestamp da última visita
@@ -30,7 +35,7 @@ export interface TriageState {
 }
 
 function emptyState(): TriageState {
-  return { resolved: {}, muted: {}, notes: {}, lastSeen: {}, copilot: {}, alertar: {}, autonomo: {}, typos: {}, memorySources: {}, etiquetas: {}, agente: {}, executor: {}, latenciaMaxima: {}, sinaisIgnorados: {} };
+  return { resolved: {}, status: {}, snoozedUntil: {}, markedUnread: {}, muted: {}, notes: {}, lastSeen: {}, copilot: {}, alertar: {}, autonomo: {}, typos: {}, memorySources: {}, etiquetas: {}, agente: {}, executor: {}, latenciaMaxima: {}, sinaisIgnorados: {} };
 }
 
 /** Normaliza um objeto cru em Record<string, T>, descartando entradas do tipo errado. */
@@ -50,6 +55,8 @@ const isTrue = (v: unknown): v is true => v === true;
 const isPositivo = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v > 0;
 const isAgenteModo = (v: unknown): v is AgenteModo => v === 'issue' || v === 'pr';
 const isExecutor = (v: unknown): v is AgenteExecutor => v === 'copilot';
+const isStatusConversa = (v: unknown): v is StatusConversa =>
+  v === 'aberta' || v === 'pendente' || v === 'adiada' || v === 'resolvida';
 const isStringArray = (v: unknown): v is string[] =>
   Array.isArray(v) && v.every((x) => typeof x === 'string');
 
@@ -70,6 +77,9 @@ export async function readTriage(): Promise<TriageState> {
     const parsed = JSON.parse(await readFile(TRIAGE_FILE, 'utf8')) as Record<string, unknown>;
     return {
       resolved: pick(parsed.resolved, isString),
+      status: pick(parsed.status, isStatusConversa),
+      snoozedUntil: pick(parsed.snoozedUntil, isString),
+      markedUnread: pick(parsed.markedUnread, isBool),
       muted: pick(parsed.muted, isBool),
       notes: pick(parsed.notes, isString),
       lastSeen: pick(parsed.lastSeen, isString),
@@ -92,8 +102,48 @@ export async function readTriage(): Promise<TriageState> {
 /** Marca resolvido até o timestamp; passe '' para desfazer (remove a entrada). */
 export async function setResolved(slug: string, isoTimestamp: string): Promise<void> {
   const state = await readTriage();
-  if (isoTimestamp) state.resolved[slug] = isoTimestamp;
-  else delete state.resolved[slug];
+  if (isoTimestamp) {
+    state.resolved[slug] = isoTimestamp;
+    state.status[slug] = 'resolvida';
+    delete state.snoozedUntil[slug];
+  } else {
+    delete state.resolved[slug];
+    if (state.status[slug] === 'resolvida') delete state.status[slug];
+  }
+  await writeJsonAtomic(TRIAGE_FILE, state);
+}
+
+/** Define o status explícito da conversa (null volta ao padrão 'aberta'). */
+export async function setStatus(slug: string, status: StatusConversa | null): Promise<void> {
+  const state = await readTriage();
+  if (!status || status === 'aberta') {
+    delete state.status[slug];
+    delete state.snoozedUntil[slug];
+  } else {
+    state.status[slug] = status;
+    if (status !== 'adiada') delete state.snoozedUntil[slug];
+  }
+  await writeJsonAtomic(TRIAGE_FILE, state);
+}
+
+/** Adia a conversa até `untilIso`; passe null/vazio para remover o adiamento. */
+export async function setSnooze(slug: string, untilIso: string | null): Promise<void> {
+  const state = await readTriage();
+  if (untilIso) {
+    state.snoozedUntil[slug] = untilIso;
+    state.status[slug] = 'adiada';
+  } else {
+    delete state.snoozedUntil[slug];
+    if (state.status[slug] === 'adiada') delete state.status[slug];
+  }
+  await writeJsonAtomic(TRIAGE_FILE, state);
+}
+
+/** Marca/desmarca manualmente a conversa como não lida. */
+export async function setMarkedUnread(slug: string, unread: boolean): Promise<void> {
+  const state = await readTriage();
+  if (unread) state.markedUnread[slug] = true;
+  else delete state.markedUnread[slug];
   await writeJsonAtomic(TRIAGE_FILE, state);
 }
 
@@ -169,8 +219,12 @@ export async function setNote(slug: string, note: string): Promise<void> {
 /** Registra a última visita ao grupo; passe '' para limpar. */
 export async function setLastSeen(slug: string, isoTimestamp: string): Promise<void> {
   const state = await readTriage();
-  if (isoTimestamp) state.lastSeen[slug] = isoTimestamp;
-  else delete state.lastSeen[slug];
+  if (isoTimestamp) {
+    state.lastSeen[slug] = isoTimestamp;
+    delete state.markedUnread[slug];
+  } else {
+    delete state.lastSeen[slug];
+  }
   await writeJsonAtomic(TRIAGE_FILE, state);
 }
 

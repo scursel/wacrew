@@ -10,13 +10,14 @@ import { PERFIL_DEFAULT } from './baloes.js';
 export type Passo =
   | { tipo: 'pausa'; ms: number }
   | { tipo: 'digitando'; ms: number }
-  | { tipo: 'enviar'; texto: string; citar?: string };
+  | { tipo: 'enviar'; texto: string; citar?: string; mentions?: string[] };
 
 export interface CtxEntrega {
   typos?: boolean;
   msgRecebidaChars?: number;
   /** id da mensagem recebida a citar (só o 1º balão). */
   citar?: string;
+  mentions?: string[];
   rng?: () => number;
 }
 
@@ -73,6 +74,7 @@ export function planoDeEntrega(
       tipo: 'enviar',
       texto: digitado,
       ...(i === 0 && ctx.citar ? { citar: ctx.citar } : {}),
+      ...(ctx.mentions?.length ? { mentions: ctx.mentions } : {}),
     });
 
     if (typo) {

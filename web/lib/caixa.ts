@@ -31,7 +31,10 @@ const DIA_MS = 24 * 60 * 60_000;
  * Departamento: conversas dos departamentos escolhidos (ou dos da pessoa). Minhas: as de
  * quem olha. Com a IA: só o dono. Todas: a lista inteira.
  */
-export type VistaFila = 'fila' | 'esperando' | 'departamento' | 'minhas' | 'ia' | 'todas';
+export type VistaFila = 'fila' | 'esperando' | 'departamento' | 'minhas' | 'ia' | 'resolvidas' | 'adiadas' | 'nao_lidas' | 'todas';
+export type StatusConversa = 'aberta' | 'pendente' | 'adiada' | 'resolvida';
+export type FiltroTipoConversa = 'todos' | 'dm' | 'grupo';
+export type OrdenacaoFila = 'recente' | 'espera' | 'nome';
 
 /** Departamento e responsável de uma conversa (vêm da atribuição; sem dados, ficam vazios). */
 export interface AtribuicaoFila {
@@ -69,6 +72,9 @@ export interface ConversaFila extends AtribuicaoFila {
   silenciada: boolean;
   arquivada: boolean;
   etiquetas: string[];
+  status?: StatusConversa;
+  snoozedUntil?: string | null;
+  markedUnread?: boolean;
 }
 
 /** Entrega viva da fila de envio humanizado (agendada ou saindo). */
@@ -229,6 +235,12 @@ export function montarFila(
     eu?: string;
     /** Departamento escolhido no seletor da vista Departamento. */
     departamento?: string;
+    /** Filtro de tipo (DM vs grupo). */
+    tipo?: FiltroTipoConversa;
+    /** Filtro de múltiplas etiquetas (a conversa precisa ter todas as selecionadas). */
+    etiquetas?: string[];
+    /** Ordenação da lista. */
+    ordenacao?: OrdenacaoFila;
   },
 ): Fila {
   const porSlug = new Map(entrada.conversas.map((c) => [c.slug, c]));
@@ -312,8 +324,17 @@ export function montarFila(
   const slugsEspera = new Set(linhasEspera.map((l) => l.slug));
 
   const q = normalizar(opts.filtro ?? '');
-  const casa = (l: LinhaFila) =>
-    !q || normalizar(l.nome).includes(q) || (porSlug.get(l.slug)?.etiquetas ?? []).some((et) => normalizar(et).includes(q));
+  const tipoFiltro = opts.tipo ?? 'todos';
+  const tagsFiltro = (opts.etiquetas ?? []).map(normalizar).filter(Boolean);
+  const casa = (l: LinhaFila) => {
+    if (tipoFiltro !== 'todos' && l.tipo !== tipoFiltro) return false;
+    const convTags = porSlug.get(l.slug)?.etiquetas ?? [];
+    if (tagsFiltro.length > 0) {
+      const set = new Set(convTags.map(normalizar));
+      if (!tagsFiltro.every((t) => set.has(t))) return false;
+    }
+    return !q || normalizar(l.nome).includes(q) || convTags.some((et) => normalizar(et).includes(q));
+  };
 
   const secoes: SecaoFila[] = [];
   const secao = (id: IdSecao, linhas: LinhaFila[]) => {
@@ -356,14 +377,22 @@ export function montarFila(
       };
     };
     const recente = (a: LinhaFila, b: LinhaFila) => (b.ultimaEm ?? '').localeCompare(a.ultimaEm ?? '');
+    const porEspera = (a: LinhaFila, b: LinhaFila) => {
+      if (a.esperaDesde && b.esperaDesde) return a.esperaDesde.localeCompare(b.esperaDesde);
+      if (a.esperaDesde) return -1;
+      if (b.esperaDesde) return 1;
+      return recente(a, b);
+    };
+    const porNome = (a: LinhaFila, b: LinhaFila) => a.nome.localeCompare(b.nome, 'pt-BR');
+    const comparador = opts.ordenacao === 'espera' ? porEspera : opts.ordenacao === 'nome' ? porNome : recente;
     /** Seções da lista do tempo, só das conversas que `quer`; `extra` (fora da lista) entra só em Todas. */
     const linhaDoTempo = (quer: (c: ConversaFila) => boolean, extra: LinhaFila[] = []) => {
       const ativas = entrada.conversas.filter((c) => !c.arquivada && quer(c));
-      secao('fixadas', ativas.filter((c) => c.fixada).map((c) => completa(c.slug)).sort(recente));
-      secao('conversas', [...ativas.filter((c) => !c.fixada).map((c) => completa(c.slug)), ...extra].sort(recente));
+      secao('fixadas', ativas.filter((c) => c.fixada).map((c) => completa(c.slug)).sort(comparador));
+      secao('conversas', [...ativas.filter((c) => !c.fixada).map((c) => completa(c.slug)), ...extra].sort(comparador));
       recolhivel(
         'arquivadas',
-        entrada.conversas.filter((c) => c.arquivada && quer(c)).map((c) => completa(c.slug)).sort(recente),
+        entrada.conversas.filter((c) => c.arquivada && quer(c)).map((c) => completa(c.slug)).sort(comparador),
         opts.arquivadasAbertas,
       );
       // Seção sem nenhuma conversa (ou sem resultado no filtro) some.
@@ -378,6 +407,12 @@ export function montarFila(
     } else if (opts.vista === 'departamento') {
       const deptos = opts.departamento ? [opts.departamento] : (entrada.meusDepartamentos ?? []);
       linhaDoTempo((c) => c.departamento !== null && deptos.includes(c.departamento));
+    } else if (opts.vista === 'resolvidas') {
+      linhaDoTempo((c) => c.status === 'resolvida');
+    } else if (opts.vista === 'adiadas') {
+      linhaDoTempo((c) => c.status === 'adiada');
+    } else if (opts.vista === 'nao_lidas') {
+      linhaDoTempo((c) => c.naoLidas > 0 || Boolean(c.markedUnread));
     } else {
       const naLista = new Set(entrada.conversas.map((c) => c.slug));
       const foraDaLista = [...new Set([...esperaViva.map((e) => e.slug), ...ia.keys()])]

@@ -30,6 +30,10 @@ export interface StreamOpts {
    * stream. Sem `id:` — não entra no cursor de retomada, começa do fim.
    */
   entregas?: boolean;
+  /** Descobre novos slugs dinamicamente durante o poll sem exigir reconexão. */
+  descobrirSlugs?: () => Promise<string[]>;
+  /** Emite eventos de reaction, receipt, edit, delete e atribuicao a partir do EOF. */
+  incluirEventos?: boolean;
 }
 
 export interface StreamHandle {
@@ -43,7 +47,7 @@ interface Conversa {
   file: string;
   /** Nome do arquivo vigiado dentro do diretório (fs.watch no diretório). */
   arquivo: string;
-  tipo: 'mensagem' | 'entrega';
+  tipo: 'mensagem' | 'entrega' | 'reaction' | 'receipt' | 'edit' | 'delete' | 'atribuicao';
   /** Offset do primeiro byte ainda não consumido como linha completa. */
   base: number;
   carry: Buffer;
@@ -53,6 +57,7 @@ interface Conversa {
 }
 
 const ENTREGAS_FILE = '.entregas.jsonl';
+const ATRIBUICOES_FILE = join('.equipe', 'atribuicoes.jsonl');
 const POLL_MS = 5_000; // rede de segurança caso o fs.watch perca evento
 const HEARTBEAT_MS = 25_000; // mantém a conexão viva através do proxy
 const MAX_REPLAY = 200;
@@ -62,17 +67,59 @@ export function abrirStreamEventos(
   emit: (frame: string) => void,
 ): StreamHandle {
   const maxReplay = opts.maxReplay ?? MAX_REPLAY;
-  const conversas: Conversa[] = opts.slugs.map((slug) => ({
-    slug,
-    file: join(opts.dataDir, slug, 'messages.jsonl'),
-    arquivo: 'messages.jsonl',
-    tipo: 'mensagem',
-    base: 0,
-    carry: Buffer.alloc(0),
-    draining: false,
-    replayPendente: opts.cursor.has(slug),
-    watcher: null,
-  }));
+  const knownSlugs = new Set<string>(opts.slugs);
+  const conversas: Conversa[] = [];
+
+  const tamanho = (c: Conversa) => stat(c.file).then((s) => s.size).catch(() => 0);
+
+  const watchConversa = (c: Conversa) => {
+    try {
+      // No DIRETÓRIO: sobrevive ao rewrite-por-rename do arquivo.
+      c.watcher = watch(dirname(c.file), (_event, name) => {
+        if (name === c.arquivo) void drain(c);
+      });
+    } catch {
+      // diretório da conversa ainda não existe; o poll cobre
+    }
+  };
+
+  const adicionarSlug = (slug: string, comCursor: boolean) => {
+    conversas.push({
+      slug,
+      file: join(opts.dataDir, slug, 'messages.jsonl'),
+      arquivo: 'messages.jsonl',
+      tipo: 'mensagem',
+      base: 0,
+      carry: Buffer.alloc(0),
+      draining: false,
+      replayPendente: comCursor && opts.cursor.has(slug),
+      watcher: null,
+    });
+    if (opts.incluirEventos) {
+      const sidecars: Array<[Conversa['tipo'], string]> = [
+        ['reaction', 'reactions.jsonl'],
+        ['receipt', 'receipts.jsonl'],
+        ['edit', 'edits.jsonl'],
+        ['delete', 'deletes.jsonl'],
+      ];
+      for (const [tipo, arquivo] of sidecars) {
+        conversas.push({
+          slug,
+          file: join(opts.dataDir, slug, arquivo),
+          arquivo,
+          tipo,
+          base: 0,
+          carry: Buffer.alloc(0),
+          draining: false,
+          replayPendente: false,
+          watcher: null,
+        });
+      }
+    }
+  };
+
+  for (const slug of opts.slugs) adicionarSlug(slug, true);
+
   if (opts.entregas) {
     conversas.push({
       slug: '',
@@ -86,12 +133,23 @@ export function abrirStreamEventos(
       watcher: null,
     });
   }
+  if (opts.incluirEventos) {
+    conversas.push({
+      slug: '',
+      file: join(opts.dataDir, ATRIBUICOES_FILE),
+      arquivo: 'atribuicoes.jsonl',
+      tipo: 'atribuicao',
+      base: 0,
+      carry: Buffer.alloc(0),
+      draining: false,
+      replayPendente: false,
+      watcher: null,
+    });
+  }
   const offsets = new Map<string, number>();
   let closed = false;
   let poll: ReturnType<typeof setInterval> | null = null;
   let heartbeat: ReturnType<typeof setInterval> | null = null;
-
-  const tamanho = (c: Conversa) => stat(c.file).then((s) => s.size).catch(() => 0);
 
   const drain = async (c: Conversa) => {
     if (c.draining || closed) return;
@@ -136,7 +194,11 @@ export function abrirStreamEventos(
         }
         if (c.tipo === 'entrega') {
           const slug = typeof obj.slug === 'string' ? obj.slug : '';
-          if (opts.slugs.includes(slug)) emit(`event: entrega\ndata: ${JSON.stringify(obj)}\n\n`);
+          if (knownSlugs.has(slug)) emit(`event: entrega\ndata: ${JSON.stringify(obj)}\n\n`);
+          continue;
+        }
+        if (c.tipo !== 'mensagem') {
+          emit(`event: ${c.tipo}\ndata: ${JSON.stringify({ ...obj, ...(c.slug ? { slug: c.slug } : {}) })}\n\n`);
           continue;
         }
         offsets.set(c.slug, end);
@@ -154,6 +216,22 @@ export function abrirStreamEventos(
   };
 
   const drainTodas = async () => {
+    if (opts.descobrirSlugs) {
+      try {
+        const encontrados = await opts.descobrirSlugs();
+        for (const s of encontrados) {
+          if (knownSlugs.has(s)) continue;
+          knownSlugs.add(s);
+          const antes = conversas.length;
+          adicionarSlug(s, false);
+          for (const novo of conversas.slice(antes)) {
+            watchConversa(novo);
+          }
+        }
+      } catch {
+        /* falha pontual na descoberta */
+      }
+    }
     for (const c of conversas) await drain(c);
   };
 
@@ -169,14 +247,7 @@ export function abrirStreamEventos(
         c.replayPendente = false;
       }
       if (c.tipo === 'mensagem') offsets.set(c.slug, c.base);
-      try {
-        // No DIRETÓRIO: sobrevive ao rewrite-por-rename do arquivo.
-        c.watcher = watch(dirname(c.file), (_event, name) => {
-          if (name === c.arquivo) void drain(c);
-        });
-      } catch {
-        // diretório da conversa ainda não existe; o poll cobre
-      }
+      watchConversa(c);
     }
     emit(`: conectado slugs=${opts.slugs.join(',')}\n\n`);
     await drainTodas();

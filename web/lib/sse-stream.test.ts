@@ -156,4 +156,31 @@ describe('abrirStreamEventos', () => {
     expect(entregas[0]).not.toContain('id:');
     expect(entregas[0]).toContain('"ticket":"x"');
   });
+
+  it('descobre novos slugs dinamicamente e emite edit/delete quando incluirEventos=true', async () => {
+    let slugsAtuais = ['a'];
+    const { frames, h } = abrir({
+      slugs: ['a'],
+      incluirEventos: true,
+      descobrirSlugs: async () => slugsAtuais,
+    });
+    await h.drainAll();
+
+    // Cria novo slug c depois de abrir o stream.
+    await mkdir(join(dir, 'c'));
+    await writeFile(join(dir, 'c', 'messages.jsonl'), '');
+    slugsAtuais = ['a', 'c'];
+    await h.drainAll();
+
+    await appendFile(join(dir, 'c', 'messages.jsonl'), linha(evento({ id: 'msg-c1' })));
+    await espera(() => dados(frames).some((d) => d.data.id === 'msg-c1'));
+
+    await appendFile(join(dir, 'a', 'edits.jsonl'), linha({ targetId: 'antiga', newText: 'editada' }));
+    await appendFile(join(dir, 'a', 'deletes.jsonl'), linha({ targetId: 'antiga', by: null }));
+    await espera(
+      () =>
+        frames.some((f) => f.startsWith('event: edit')) &&
+        frames.some((f) => f.startsWith('event: delete')),
+    );
+  });
 });

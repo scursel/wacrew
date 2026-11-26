@@ -46,6 +46,8 @@ export default async function GroupPage({
       donoLogin={process.env.PANEL_USER?.trim() || null}
       atribuicao={atribuicao}
       resolvida={await estaResolvida([slug], triage.resolved, registros)}
+      lastSeenInicial={triage.lastSeen[slug] ?? null}
+      snoozedUntilInicial={triage.snoozedUntil[slug] ?? null}
     />
   );
 }

@@ -62,6 +62,10 @@ export function ClientesView({ linhas, kanban, agoraMs }: { linhas: ClienteLinha
   const [ordem, setOrdem] = useState<Ordem>(ORDEM_PADRAO);
   const [escolha, setEscolha] = useState<EscolhaColunas>(null);
   const [metricas, setMetricas] = useState(false);
+  const [importAberto, setImportAberto] = useState(false);
+  const [csvTexto, setCsvTexto] = useState("");
+  const [importando, setImportando] = useState(false);
+  const [importRes, setImportRes] = useState<string | null>(null);
 
   // Mantém a tela viva: atualiza a cada 15 s, parado com a aba escondida.
   useEffect(() => {
@@ -173,7 +177,24 @@ export function ClientesView({ linhas, kanban, agoraMs }: { linhas: ClienteLinha
           </span>
         }
         acoes={
-          <>
+          <div className="flex flex-wrap items-center gap-2">
+            <a
+              href="/api/contatos-crm?formato=csv"
+              className="inline-flex h-8 items-center rounded-control border border-line bg-surface px-2.5 text-[12.5px] font-medium text-fg-dim hover:bg-surface-2 hover:text-fg"
+            >
+              Exportar CSV
+            </a>
+            <Button
+              type="button"
+              size="sm"
+              variant="subtle"
+              onClick={() => {
+                setImportRes(null);
+                setImportAberto(true);
+              }}
+            >
+              Importar CSV
+            </Button>
             <Segmentado<Modo>
               rotulo="Exibição"
               opcoes={[
@@ -183,7 +204,7 @@ export function ClientesView({ linhas, kanban, agoraMs }: { linhas: ClienteLinha
               valor={modo}
               aoMudar={trocarModo}
             />
-          </>
+          </div>
         }
       />
       <BarraClientes
@@ -221,6 +242,80 @@ export function ClientesView({ linhas, kanban, agoraMs }: { linhas: ClienteLinha
         <div className="flex-1 bg-bg">{vazio}</div>
       ) : (
         <KanbanBoard cards={visiveis} inicial={kanban} conhecidas={conhecidas} />
+      )}
+
+      {importAberto && (
+        <div
+          className="overlay-in fixed inset-0 z-50 flex items-center justify-center bg-scrim p-4 backdrop-blur-[2px]"
+          onClick={() => setImportAberto(false)}
+          role="presentation"
+        >
+          <form
+            onClick={(e) => e.stopPropagation()}
+            onSubmit={async (e) => {
+              e.preventDefault();
+              if (!csvTexto.trim() || importando) return;
+              setImportando(true);
+              setImportRes(null);
+              try {
+                const res = await fetch("/api/contatos-crm", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ acao: "importar", csv: csvTexto }),
+                });
+                const d = (await res.json().catch(() => ({}))) as { ok?: boolean; importados?: number; ignorados?: number; error?: string };
+                if (!res.ok || !d.ok) throw new Error(d.error ?? "Erro ao importar");
+                setImportRes(`Importados: ${d.importados ?? 0} · Ignorados: ${d.ignorados ?? 0}`);
+                router.refresh();
+              } catch (err) {
+                setImportRes(err instanceof Error ? err.message : "Falha na importação");
+              } finally {
+                setImportando(false);
+              }
+            }}
+            className="pop-in w-full max-w-lg space-y-3 rounded-[14px] border border-line bg-surface p-5 [box-shadow:var(--float)]"
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-[15px] font-semibold text-fg">Importar contatos CSV</h3>
+              <button
+                type="button"
+                onClick={() => setImportAberto(false)}
+                className="text-[13px] text-fg-faint hover:text-fg"
+              >
+                Fechar
+              </button>
+            </div>
+            <p className="text-[12.5px] text-fg-dim">
+              Cabeçalho suportado: <code>nome,telefone,email,empresa,cargo,notas,etiquetas</code>
+            </p>
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (!f) return;
+                void f.text().then(setCsvTexto);
+              }}
+              className="block w-full text-[12.5px] text-fg-dim"
+            />
+            <textarea
+              rows={6}
+              value={csvTexto}
+              onChange={(e) => setCsvTexto(e.target.value)}
+              placeholder={"nome,telefone,empresa\nJoão Silva,5511999990000,Auto Center"}
+              className="w-full rounded-control border border-line bg-surface-2 p-2.5 font-mono text-[12px] text-fg focus:border-accent focus:outline-none"
+            />
+            {importRes && <p className="text-[12.5px] text-fg-dim">{importRes}</p>}
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="ghost" size="sm" onClick={() => setImportAberto(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit" size="sm" loading={importando} disabled={!csvTexto.trim()}>
+                Importar
+              </Button>
+            </div>
+          </form>
+        </div>
       )}
     </div>
   );

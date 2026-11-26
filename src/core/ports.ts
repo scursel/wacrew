@@ -56,14 +56,30 @@ export interface WhatsAppGateway {
   /** Registra handler para revogação ("apagada para todos") de mensagem recebida. */
   onDelete(handler: (del: InboundDelete) => void): void;
   /** Envia uma mensagem de texto para um grupo/contato (jid). `mentions` = jids a marcar (@). */
-  sendText(jid: string, text: string, mentions?: string[], meta?: MetaEnvio): Promise<void>;
+  sendText(
+    jid: string,
+    text: string,
+    mentions?: string[],
+    meta?: MetaEnvio,
+    quotedId?: string,
+  ): Promise<void>;
   /** Envia uma mídia (imagem, documento, áudio ou vídeo) para um grupo/contato (jid). */
-  sendMedia(jid: string, media: OutboundMedia, meta?: MetaEnvio): Promise<void>;
+  sendMedia(jid: string, media: OutboundMedia, meta?: MetaEnvio, quotedId?: string): Promise<void>;
+  /** Apaga uma mensagem para todos (revoke). */
+  deleteMessage(
+    jid: string,
+    key: { id: string; participant?: string; fromMe?: boolean },
+  ): Promise<void>;
   /**
    * Verifica se um número (só dígitos, com DDI, ex: 5511999999999) tem conta
    * de WhatsApp. Retorna o jid canônico se existir, null caso contrário.
    */
   checkNumber(number: string): Promise<{ exists: boolean; jid: string | null }>;
+  /**
+   * Gera código de pareamento para conectar um aparelho usando o número de
+   * telefone (dígitos com DDI) em vez de escanear o QR.
+   */
+  requestPairingCode(phoneNumber: string): Promise<string>;
   /**
    * Reage (emoji) a uma mensagem identificada por `key`. `emoji` vazio ('')
    * remove a reação. A própria reação também é emitida no fluxo de onReaction.

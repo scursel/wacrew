@@ -4,8 +4,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fracaoAnel, nivelEspera } from "@/lib/aparencia";
-import { type AguardandoOk, type DadosFila, type EntregaViva, type SecaoFila, type VistaFila, montarFila } from "@/lib/caixa";
+import { type AguardandoOk, type DadosFila, type EntregaViva, type FiltroTipoConversa, type OrdenacaoFila, type SecaoFila, type VistaFila, montarFila } from "@/lib/caixa";
 import { checarSessao, useRotas } from "../RotasPainel";
+import { useTempoReal } from "../TempoRealProvider";
 import { Button, Segmentado, Select, cn, Icone } from "../ui";
 import { Kbd } from "../ui/Kbd";
 import { useListNav } from "../useListNav";
@@ -16,7 +17,8 @@ export type DadosCaixa = DadosFila;
 const CHAVE_VISTA = "wac-caixa-vista";
 const CIRCUNFERENCIA = 2 * Math.PI * 6;
 const COR_NIVEL = { neutro: "text-fg-faint", atencao: "text-warn", urgente: "text-danger" } as const;
-const VISTAS: VistaFila[] = ["fila", "esperando", "departamento", "minhas", "ia", "todas"];
+const VISTAS: VistaFila[] = ["fila", "esperando", "departamento", "minhas", "ia", "resolvidas", "adiadas", "nao_lidas", "todas"];
+const PAGE_SIZE = 80;
 
 /** A vista salva no navegador; "Com a IA" só existe para o dono. */
 function vistaSalva(valor: string | null, dono: boolean): VistaFila | null {
@@ -120,6 +122,14 @@ export function ListaConversas({ dados, aviso, className }: { dados: DadosCaixa;
   /** Departamento escolhido no seletor ("" = os da pessoa, ou o primeiro, para o dono). */
   const [depto, setDepto] = useState("");
   const [filtro, setFiltro] = useState("");
+  const [tipoFiltro, setTipoFiltro] = useState<FiltroTipoConversa>("todos");
+  const [ordenacao, setOrdenacao] = useState<OrdenacaoFila>("recente");
+  const [etiquetasSel, setEtiquetasSel] = useState<string[]>([]);
+  const [limiteRender, setLimiteRender] = useState(PAGE_SIZE);
+  const [modoBulk, setModoBulk] = useState(false);
+  const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
+  const [bulkTag, setBulkTag] = useState("");
+  const [bulkOcupado, setBulkOcupado] = useState(false);
   const [arquivadasAbertas, setArquivadasAbertas] = useState(false);
   const [paradasAbertas, setParadasAbertas] = useState(false);
   // Os dados chegam do servidor na montagem (e quando a página se refaz) e depois pela rota leve da fila.
@@ -128,6 +138,7 @@ export function ListaConversas({ dados, aviso, className }: { dados: DadosCaixa;
   const [ia, setIa] = useState({ entregas: dados.entregas, aguardandoOk: dados.aguardandoOk });
   const [agora, setAgora] = useState(dados.geradoEm);
   const listaRef = useRef<HTMLElement>(null);
+  const tempoReal = useTempoReal();
 
   // Departamentos que o seletor oferece: o dono vê todos; o atendente, só os seus.
   const opcoesDepto = useMemo(() => {
@@ -162,28 +173,41 @@ export function ListaConversas({ dados, aviso, className }: { dados: DadosCaixa;
     return () => clearInterval(id);
   }, []);
 
-  // Quem espera e as não lidas: só os dados da fila, sem refazer a conversa aberta.
-  useEffect(() => {
-    let vivo = true;
-    const buscar = async () => {
-      if (document.visibilityState !== "visible") return;
-      try {
-        const res = checarSessao(await fetch(rotas.fila, { cache: "no-store" }), rotas);
-        if (!res.ok) return;
-        const d = (await res.json()) as DadosFila;
-        if (!vivo) return;
-        setAtuais(d);
-        if (dono) setIa({ entregas: d.entregas, aguardandoOk: d.aguardandoOk });
-      } catch {
-        /* painel reiniciando: fica o último estado */
-      }
-    };
-    const id = setInterval(buscar, 20_000);
-    return () => {
-      vivo = false;
-      clearInterval(id);
-    };
+  // Quem espera e as não lidas: SSE dispara atualização imediata; polling fica só como rede de segurança.
+  const buscarFila = useCallback(async () => {
+    try {
+      const res = checarSessao(await fetch(rotas.fila, { cache: "no-store" }), rotas);
+      if (!res.ok) return;
+      const d = (await res.json()) as DadosFila;
+      setAtuais(d);
+      if (dono) setIa({ entregas: d.entregas, aguardandoOk: d.aguardandoOk });
+    } catch {
+      /* painel reiniciando: fica o último estado */
+    }
   }, [rotas, dono]);
+
+  useEffect(() => {
+    const intervalo = tempoReal?.ativo ? 60_000 : 20_000;
+    const id = setInterval(() => {
+      if (document.visibilityState === "visible") void buscarFila();
+    }, intervalo);
+    return () => clearInterval(id);
+  }, [buscarFila, tempoReal?.ativo]);
+
+  useEffect(() => {
+    if (!tempoReal) return;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const unsub = tempoReal.assinar((ev) => {
+      if (ev.tipo === "message" || ev.tipo === "entrega" || ev.tipo === "atribuicao") {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => void buscarFila(), 250);
+      }
+    });
+    return () => {
+      if (timer) clearTimeout(timer);
+      unsub();
+    };
+  }, [tempoReal, buscarFila]);
 
   // O que a IA está fazendo muda em segundos (balão a balão): consulta própria.
   useEffect(() => {
@@ -208,6 +232,21 @@ export function ListaConversas({ dados, aviso, className }: { dados: DadosCaixa;
     };
   }, [dono]);
 
+  const todasEtiquetas = useMemo(
+    () => [...new Set(atuais.conversas.flatMap((c) => c.etiquetas))].sort((a, b) => a.localeCompare(b, "pt-BR")),
+    [atuais.conversas],
+  );
+
+  const contagensExtras = useMemo(() => {
+    let naoLidas = 0;
+    let adiadas = 0;
+    for (const c of atuais.conversas) {
+      if (c.naoLidas > 0 || c.markedUnread) naoLidas += 1;
+      if (c.status === "adiada") adiadas += 1;
+    }
+    return { naoLidas, adiadas };
+  }, [atuais.conversas]);
+
   const fila = useMemo(
     () =>
       montarFila(
@@ -226,10 +265,40 @@ export function ListaConversas({ dados, aviso, className }: { dados: DadosCaixa;
           agoraMs: agora,
           eu: atuais.eu,
           departamento: deptoAtivo || undefined,
+          tipo: tipoFiltro,
+          etiquetas: etiquetasSel,
+          ordenacao,
         },
       ),
-    [atuais.esperando, atuais.conversas, atuais.meusDepartamentos, atuais.eu, ia, dono, vista, filtro, arquivadasAbertas, paradasAbertas, agora, deptoAtivo],
+    [atuais.esperando, atuais.conversas, atuais.meusDepartamentos, atuais.eu, ia, dono, vista, filtro, arquivadasAbertas, paradasAbertas, agora, deptoAtivo, tipoFiltro, etiquetasSel, ordenacao],
   );
+
+  useEffect(() => {
+    setLimiteRender(PAGE_SIZE);
+  }, [vista, filtro, tipoFiltro, etiquetasSel, ordenacao]);
+
+  async function executarBulk(op: "resolver" | "silenciar" | "etiquetar" | "naoLida") {
+    const slugs = [...selecionadas];
+    if (slugs.length === 0 || bulkOcupado) return;
+    if (op === "etiquetar" && !bulkTag.trim()) return;
+    setBulkOcupado(true);
+    try {
+      await fetch("/api/triage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "bulk",
+          value: { slugs, op, ...(op === "etiquetar" ? { etiqueta: bulkTag.trim() } : {}) },
+        }),
+      });
+      setSelecionadas(new Set());
+      setModoBulk(false);
+      setBulkTag("");
+      await buscarFila();
+    } finally {
+      setBulkOcupado(false);
+    }
+  }
 
   const atual = useMemo(() => {
     const m = /\/g\/([^/]+)$/.exec(pathname);
@@ -259,14 +328,27 @@ export function ListaConversas({ dados, aviso, className }: { dados: DadosCaixa;
             {abertas === 0 ? "tudo em dia" : `${abertas} ${abertas === 1 ? "aberta" : "abertas"}`}
           </span>
           {dono && (
-            <Link
-              href="/novo"
-              title="Nova conversa"
-              aria-label="Nova conversa"
-              className="-my-1.5 ml-auto grid h-8 w-8 shrink-0 place-items-center self-center rounded-control text-fg-dim transition-colors hover:bg-elevated hover:text-fg max-[860px]:h-10 max-[860px]:w-10"
-            >
-              <Icone nome="plus" />
-            </Link>
+            <div className="ml-auto flex items-center gap-1">
+              <Button
+                type="button"
+                size="sm"
+                variant={modoBulk ? "subtle" : "ghost"}
+                onClick={() => {
+                  setModoBulk((v) => !v);
+                  setSelecionadas(new Set());
+                }}
+              >
+                {modoBulk ? "Cancelar" : "Selecionar"}
+              </Button>
+              <Link
+                href="/novo"
+                title="Nova conversa"
+                aria-label="Nova conversa"
+                className="-my-1.5 grid h-8 w-8 shrink-0 place-items-center self-center rounded-control text-fg-dim transition-colors hover:bg-elevated hover:text-fg max-[860px]:h-10 max-[860px]:w-10"
+              >
+                <Icone nome="plus" />
+              </Link>
+            </div>
           )}
         </div>
         <Segmentado
@@ -277,12 +359,62 @@ export function ListaConversas({ dados, aviso, className }: { dados: DadosCaixa;
           opcoes={[
             { valor: "fila" as const, rotulo: "Fila", num: fila.contagens.fila },
             { valor: "esperando" as const, rotulo: "Esperando", num: fila.contagens.esperando },
+            { valor: "nao_lidas" as const, rotulo: "Não lidas", num: contagensExtras.naoLidas || undefined },
             { valor: "departamento" as const, rotulo: "Departamento" },
             { valor: "minhas" as const, rotulo: "Minhas", num: fila.contagens.minhas },
             ...(dono ? [{ valor: "ia" as const, rotulo: "Com a IA", num: fila.contagens.ia }] : []),
+            ...(dono ? [{ valor: "adiadas" as const, rotulo: "Adiadas", num: contagensExtras.adiadas || undefined }] : []),
+            ...(dono ? [{ valor: "resolvidas" as const, rotulo: "Resolvidas" }] : []),
             { valor: "todas" as const, rotulo: "Todas" },
           ]}
         />
+        <div className="flex flex-wrap items-center gap-2 text-[12px]">
+          <Select
+            tamanho="sm"
+            aria-label="Tipo de conversa"
+            value={tipoFiltro}
+            onChange={(e) => setTipoFiltro(e.target.value as FiltroTipoConversa)}
+          >
+            <option value="todos">DMs e grupos</option>
+            <option value="dm">Só DMs</option>
+            <option value="grupo">Só grupos</option>
+          </Select>
+          <Select
+            tamanho="sm"
+            aria-label="Ordenação"
+            value={ordenacao}
+            onChange={(e) => setOrdenacao(e.target.value as OrdenacaoFila)}
+          >
+            <option value="recente">Mais recentes</option>
+            <option value="espera">Maior espera</option>
+            <option value="nome">Nome A-Z</option>
+          </Select>
+          {todasEtiquetas.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1">
+              {todasEtiquetas.slice(0, 6).map((tag) => {
+                const ativa = etiquetasSel.includes(tag);
+                return (
+                  <button
+                    key={tag}
+                    type="button"
+                    aria-pressed={ativa}
+                    onClick={() =>
+                      setEtiquetasSel((cur) => (ativa ? cur.filter((x) => x !== tag) : [...cur, tag]))
+                    }
+                    className={cn(
+                      "rounded-tag border px-2 py-0.5 text-[11.5px] transition-colors",
+                      ativa
+                        ? "border-accent bg-accent-soft text-accent"
+                        : "border-line bg-surface-2 text-fg-dim hover:text-fg",
+                    )}
+                  >
+                    #{tag}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
         {vista === "departamento" && opcoesDepto.length > 1 && (
           <div className="flex items-center gap-2 text-[12.5px] text-fg-faint">
             <span>Departamento</span>
@@ -328,7 +460,43 @@ export function ListaConversas({ dados, aviso, className }: { dados: DadosCaixa;
 
       {aviso}
 
-      <nav ref={listaRef} aria-label="Conversas da fila" className="min-h-0 flex-1 overflow-y-auto">
+      {modoBulk && selecionadas.size > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 border-b border-line bg-surface-2 px-4 py-2 text-[12px]">
+          <span className="font-mono font-semibold text-fg">{selecionadas.size} sel.</span>
+          <Button type="button" size="sm" variant="subtle" disabled={bulkOcupado} onClick={() => void executarBulk("resolver")}>
+            Resolver
+          </Button>
+          <Button type="button" size="sm" variant="ghost" disabled={bulkOcupado} onClick={() => void executarBulk("silenciar")}>
+            Silenciar
+          </Button>
+          <Button type="button" size="sm" variant="ghost" disabled={bulkOcupado} onClick={() => void executarBulk("naoLida")}>
+            Não lida
+          </Button>
+          <div className="flex items-center gap-1">
+            <input
+              value={bulkTag}
+              onChange={(e) => setBulkTag(e.target.value)}
+              placeholder="etiqueta"
+              className="w-20 rounded-[6px] border border-line bg-surface px-1.5 py-0.5 text-[11.5px] text-fg"
+            />
+            <Button type="button" size="sm" variant="ghost" disabled={bulkOcupado || !bulkTag.trim()} onClick={() => void executarBulk("etiquetar")}>
+              +Tag
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <nav
+        ref={listaRef}
+        aria-label="Conversas da fila"
+        className="min-h-0 flex-1 overflow-y-auto"
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          if (el.scrollHeight - el.scrollTop - el.clientHeight < 200 && fila.ordem.length > limiteRender) {
+            setLimiteRender((l) => l + PAGE_SIZE);
+          }
+        }}
+      >
         {fila.ordem.length === 0 && fila.secoes.every((s) => s.id !== "arquivadas" && s.id !== "paradas") ? (
           filtro.trim() ? (
             <Vazio titulo={`Nada encontrado para “${filtro.trim()}”`}>
@@ -416,6 +584,7 @@ export function ListaConversas({ dados, aviso, className }: { dados: DadosCaixa;
               )}
               {s.linhas.map((l) => {
                 posicao += 1;
+                if (posicao >= limiteRender) return null;
                 const i = posicao;
                 return (
                   <InboxItem
@@ -427,11 +596,28 @@ export function ListaConversas({ dados, aviso, className }: { dados: DadosCaixa;
                     atual={l.slug === atual}
                     cursor={i === navIndex && l.slug !== atual}
                     onCursor={() => setNavIndex(i)}
+                    selecionavel={modoBulk}
+                    selecionada={selecionadas.has(l.slug)}
+                    onToggleSelect={() =>
+                      setSelecionadas((cur) => {
+                        const next = new Set(cur);
+                        if (next.has(l.slug)) next.delete(l.slug);
+                        else next.add(l.slug);
+                        return next;
+                      })
+                    }
                   />
                 );
               })}
             </div>
           ))
+        )}
+        {fila.ordem.length > limiteRender && (
+          <div className="p-3 text-center">
+            <Button type="button" size="sm" variant="ghost" onClick={() => setLimiteRender((l) => l + PAGE_SIZE)}>
+              Mostrar mais ({fila.ordem.length - limiteRender} restantes)
+            </Button>
+          </div>
         )}
       </nav>
 

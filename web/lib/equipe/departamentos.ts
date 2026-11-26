@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { DATA_DIR } from '../paths';
 import { writeJsonAtomic } from '../json-store';
 
-export interface Departamento { id: string; nome: string; descricao: string; membros: string[] }
+export interface Departamento { id: string; nome: string; descricao: string; membros: string[]; roundRobin?: boolean }
 export function departamentosFile(): string { return join(DATA_DIR, '.equipe', 'departamentos.json'); }
 function valido(x: unknown): x is Departamento {
   if (!x || typeof x !== 'object') return false;

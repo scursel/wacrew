@@ -18,6 +18,7 @@ import {
 } from "./Blocos";
 import { DashboardView } from "./DashboardView";
 import { GraficoColunas, GraficoLinha } from "./Graficos";
+import { RelatoriosEquipeCard } from "./RelatoriosEquipeCard";
 
 export const dynamic = "force-dynamic";
 
@@ -136,6 +137,8 @@ export default async function PainelPage({
         >
           <MapaCalor calor={p.calor} />
         </Card>
+
+        <RelatoriosEquipeCard periodo={periodo} />
 
         <DashboardView dados={dados} sinais={sinais} fotos={fotos} />
       </Grade12>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { PainelCliente, Tom } from "@/lib/caixa";
 import { EditorEtiquetas } from "./Etiqueta";
 import { useRotas } from "./RotasPainel";
@@ -17,7 +17,29 @@ export function ContextoCard({ dados, onEtiquetas }: { dados: PainelCliente; onE
   const rotas = useRotas();
   const dono = dados.dono;
   const [etiquetas, setEtiquetas] = useState<string[]>(dono?.etiquetas ?? []);
+  const [conhecidas, setConhecidas] = useState<string[]>(dono?.conhecidas ?? []);
   const [editando, setEditando] = useState(false);
+
+  useEffect(() => {
+    if (dono) {
+      setEtiquetas(dono.etiquetas);
+      setConhecidas(dono.conhecidas);
+      return;
+    }
+    if (rotas.modo !== "atendimento") return;
+    let alive = true;
+    fetch(`/api/atendimento/etiquetas?slug=${encodeURIComponent(dados.slug)}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((res: { etiquetas?: string[]; conhecidas?: string[] } | null) => {
+        if (!alive || !res) return;
+        if (Array.isArray(res.etiquetas)) setEtiquetas(res.etiquetas);
+        if (Array.isArray(res.conhecidas)) setConhecidas(res.conhecidas);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [dono, rotas.modo, dados.slug]);
 
   return (
     <div className="flex flex-col gap-3 border-b border-line p-5">
@@ -28,7 +50,7 @@ export function ContextoCard({ dados, onEtiquetas }: { dados: PainelCliente; onE
           <small className="block text-[12.5px] text-fg-faint">{dados.desde ?? (dados.tipo === "dm" ? "conversa direta" : "grupo")}</small>
         </div>
       </div>
-      {dono && (
+      {(dono || rotas.modo === "atendimento") && (
         <div className="relative flex flex-wrap items-center gap-1">
           {etiquetas.map((e) => (
             <Etiqueta key={e} nome={e} />
@@ -42,7 +64,7 @@ export function ContextoCard({ dados, onEtiquetas }: { dados: PainelCliente; onE
             <Icone nome="plus" tamanho={12} />
             {etiquetas.length === 0 ? "Etiqueta" : <span className="sr-only">Editar etiquetas</span>}
           </button>
-          {dono.sinais.map((s) => (
+          {dono?.sinais.map((s) => (
             <span key={s.id} title={s.explicacao}>
               <Badge variant={VARIANTE[s.tom]}>{s.texto}</Badge>
             </span>
@@ -51,7 +73,8 @@ export function ContextoCard({ dados, onEtiquetas }: { dados: PainelCliente; onE
             <EditorEtiquetas
               slug={dados.slug}
               atuais={etiquetas}
-              conhecidas={dono.conhecidas}
+              conhecidas={conhecidas}
+              modoAtendimento={rotas.modo === "atendimento"}
               onSalvo={(lista) => {
                 setEtiquetas(lista);
                 onEtiquetas?.();
