@@ -5,7 +5,7 @@ vi.mock('./identidade', () => ({ slugsExistentes: vi.fn(), contatosDeIdentidade:
 vi.mock('./usuarios', () => ({ acharUsuario: vi.fn() }));
 vi.mock('./departamentos', () => ({ lerDepartamentos: vi.fn() }));
 vi.mock('./atribuicoes', () => ({ DONO: '@dono', registrar: vi.fn() }));
-vi.mock('../triage', () => ({ setResolved: vi.fn() }));
+vi.mock('../triage', () => ({ setAutonomo: vi.fn(), setResolved: vi.fn() }));
 
 import { POST } from '../../app/api/atendimento/atribuicao/route';
 import { registrar } from './atribuicoes';
@@ -13,7 +13,7 @@ import { lerDepartamentos } from './departamentos';
 import { contatosDeIdentidade, slugsExistentes } from './identidade';
 import { canonicoGlobal, quemAtendeDoPedido } from './quem';
 import { acharUsuario } from './usuarios';
-import { setResolved } from '../triage';
+import { setAutonomo, setResolved } from '../triage';
 
 const telefone = 'dm-5511999999999';
 const lid = 'dm-123456789012345';
@@ -37,6 +37,15 @@ describe('rota de atribuição', () => {
     expect(setResolved).toHaveBeenCalledWith(telefone, expect.any(String));
     expect(setResolved).toHaveBeenCalledWith(lid, expect.any(String));
     expect(registrar).toHaveBeenCalledWith(telefone, { tipo: 'resolver', por: 'ana' });
+  });
+
+  it('assumir atribui no slug canônico e desliga o modo autônomo da IA nos irmãos', async () => {
+    const res = await POST(pedido({ slug: lid, acao: 'assumir' }));
+    expect(res.status).toBe(200);
+    expect(setAutonomo).toHaveBeenCalledTimes(2);
+    expect(setAutonomo).toHaveBeenCalledWith(telefone, false);
+    expect(setAutonomo).toHaveBeenCalledWith(lid, false);
+    expect(registrar).toHaveBeenCalledWith(telefone, { tipo: 'assumir', por: 'ana' });
   });
 
   it('valida responsável ativo e departamento antes de delegar', async () => {

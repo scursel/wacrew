@@ -38,6 +38,7 @@ export function GroupWorkspace({
   lastSeenInicial = null,
   snoozedUntilInicial = null,
   copilotoLiberado = false,
+  autonomoInicial,
 }: {
   slug: string;
   groupName: string;
@@ -57,6 +58,8 @@ export function GroupWorkspace({
   lastSeenInicial?: string | null;
   snoozedUntilInicial?: string | null;
   copilotoLiberado?: boolean;
+  /** Se a conversa está com IA em modo autônomo (também passado para atendentes). */
+  autonomoInicial?: boolean;
 }) {
   const rotas = useRotas();
   const router = useRouter();
@@ -111,7 +114,10 @@ export function GroupWorkspace({
   const fecharSobreposto = useCallback(() => setSobreposto(false), []);
 
   const [silenciado, setSilenciado] = useState(dono?.silenciado ?? false);
+  const [autonomo, setAutonomo] = useState(autonomoInicial ?? dono?.autonomo ?? false);
   const [resolucao, setResolucao] = useState<Resolucao>("parada");
+  const [assumindo, setAssumindo] = useState<"parada" | "salvando" | "erro">("parada");
+  const [assumidoLocal, setAssumidoLocal] = useState(false);
   const [reaberta, setReaberta] = useState(false);
   const [snoozeAberto, setSnoozeAberto] = useState(false);
   const [snoozeAte, setSnoozeAte] = useState<string | null>(snoozedUntilInicial);
@@ -120,7 +126,10 @@ export function GroupWorkspace({
   useEffect(() => {
     setReaberta(false);
     setSnoozeAte(snoozedUntilInicial);
-  }, [slug, resolvida, snoozedUntilInicial]);
+    setAutonomo(autonomoInicial ?? dono?.autonomo ?? false);
+    setAssumidoLocal(false);
+    setAssumindo("parada");
+  }, [slug, resolvida, snoozedUntilInicial, autonomoInicial, dono?.autonomo, atribuicao.inicial.responsavel]);
 
   const triagem = useCallback(async (action: "muted" | "snooze" | "markedUnread", value: boolean | string | null) => {
     const res = await fetch("/api/triage", {
@@ -153,6 +162,27 @@ export function GroupWorkspace({
     }
   }, [triagem, router, rotas.caixa]);
 
+  // Assumir atribui a conversa para quem clicou e desliga o modo autônomo da IA na rota.
+  const assumir = useCallback(async () => {
+    if (assumindo === "salvando" || resolucao === "salvando") return;
+    setAssumindo("salvando");
+    try {
+      await enviarAtribuicao(slug, { acao: "assumir" }, rotas);
+      setAssumidoLocal(true);
+      setAutonomo(false);
+      setAssumindo("parada");
+      router.refresh();
+    } catch {
+      setAssumindo("erro");
+    }
+  }, [assumindo, resolucao, slug, rotas, router]);
+
+  useEffect(() => {
+    if (assumindo !== "erro") return;
+    const t = setTimeout(() => setAssumindo("parada"), 2500);
+    return () => clearTimeout(t);
+  }, [assumindo]);
+
   // Resolver solta a conversa: tira o responsável e a marca como resolvida na triagem (a rota faz os dois).
   // Vale para o dono e para a equipe.
   const resolver = useCallback(async () => {
@@ -161,6 +191,7 @@ export function GroupWorkspace({
     setReaberta(false);
     try {
       await enviarAtribuicao(slug, { acao: "resolver" }, rotas);
+      setAssumidoLocal(false);
       setResolucao("feita");
       router.refresh();
     } catch {
@@ -218,14 +249,81 @@ export function GroupWorkspace({
 
   const painelVisivel = estreito ? sobreposto : aberto;
 
+  const livre = atribuicao.inicial.responsavel === null && !assumidoLocal;
+  const podeAssumir = !verde && (livre || autonomo);
+
+  const acoesComposer = verde ? (
+    <>
+      <Button
+        size="sm"
+        variant="sucesso"
+        onClick={resolver}
+        loading={resolucao === "salvando"}
+        title="Resolvida. Volta para amarelo quando o cliente escrever de novo (E marca de novo)"
+      >
+        {resolucao !== "salvando" && <Icone nome="check" tamanho={14} />}
+        Resolvida
+      </Button>
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={reabrir}
+        disabled={resolucao === "salvando"}
+        title="Reabrir conversa manualmente"
+      >
+        Reabrir
+      </Button>
+    </>
+  ) : podeAssumir ? (
+    <>
+      <Button
+        size="sm"
+        variant="atencao"
+        onClick={() => void assumir()}
+        loading={assumindo === "salvando"}
+        disabled={resolucao === "salvando"}
+        title={
+          autonomo
+            ? "Assumir o atendimento e desligar a IA autônoma nesta conversa"
+            : "Assumir o atendimento desta conversa"
+        }
+      >
+        {assumindo !== "salvando" && <Icone nome="user" tamanho={14} />}
+        {assumindo === "erro" ? "Tente de novo" : "Assumir atendimento"}
+      </Button>
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={resolver}
+        loading={resolucao === "salvando"}
+        disabled={assumindo === "salvando"}
+        title="Marcar como resolvida sem assumir (E)"
+      >
+        {resolucao !== "salvando" && <Icone nome="check" tamanho={14} />}
+        {resolucao === "erro" ? "Tente de novo" : "Resolver"}
+      </Button>
+    </>
+  ) : (
+    <Button
+      size="sm"
+      variant="atencao"
+      onClick={resolver}
+      loading={resolucao === "salvando"}
+      title="Marcar como resolvida e soltar o responsável (E)"
+    >
+      {resolucao !== "salvando" && <Icone nome="check" tamanho={14} />}
+      {resolucao === "erro" ? "Tente de novo" : "Resolver"}
+    </Button>
+  );
+
   const acoes = (
     <>
       {dono && (
         <span
           className="inline-flex h-[22px] shrink-0 items-center whitespace-nowrap rounded-tag px-2 text-[12px] font-medium text-fg-dim shadow-[inset_0_0_0_1px_var(--color-line-2)] max-[1180px]:hidden"
-          title={dono.autonomo ? "A IA envia direto nesta conversa" : "A IA mostra o texto e espera o seu OK antes de enviar"}
+          title={autonomo ? "A IA envia direto nesta conversa" : "A IA mostra o texto e espera o seu OK antes de enviar"}
         >
-          {dono.autonomo ? "autônomo" : "com confirmação"}
+          {autonomo ? "autônomo" : "com confirmação"}
         </span>
       )}
       {dono && (
@@ -331,33 +429,6 @@ export function GroupWorkspace({
           <Icone nome="mute" />
         </IconButton>
       )}
-      <Button
-        size="sm"
-        variant={verde ? "sucesso" : "atencao"}
-        onClick={resolver}
-        loading={resolucao === "salvando"}
-        title={
-          verde
-            ? "Resolvida. Volta para amarelo quando o cliente escrever de novo (E marca de novo)"
-            : "Marcar como resolvida e soltar o responsável (E)"
-        }
-        className="max-[860px]:h-10"
-      >
-        {resolucao !== "salvando" && <Icone nome="check" tamanho={15} />}
-        {resolucao === "erro" ? "Tente de novo" : verde ? "Resolvida" : "Resolver"}
-      </Button>
-      {verde && (
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={reabrir}
-          disabled={resolucao === "salvando"}
-          title="Reabrir conversa manualmente"
-          className="max-[860px]:h-10"
-        >
-          Reabrir
-        </Button>
-      )}
       <IconButton
         size="sm"
         data-alterna-painel
@@ -383,6 +454,7 @@ export function GroupWorkspace({
           departamentos={atribuicao.departamentos}
           equipe={atribuicao.equipe}
           ultimoAtendimento={ultimoAtendimento}
+          autonomo={autonomo}
         />
         <Timeline
           slug={slug}
@@ -398,6 +470,7 @@ export function GroupWorkspace({
           participantes={painel.pessoas.map((p) => ({ id: p.id, nome: p.nome }))}
           atendenteNome={atribuicao.inicial.responsavelNome ?? donoLogin ?? null}
           departamentoNome={atribuicao.inicial.departamentoNome}
+          acoesComposer={acoesComposer}
           cabecalho={{ avatarPath: painel.avatarPath, tipo: painel.tipo, pessoas: painel.pessoas.length, acoes }}
         />
       </section>

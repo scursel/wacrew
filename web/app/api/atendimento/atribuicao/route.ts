@@ -9,7 +9,7 @@ import { notificarAgente } from '@/lib/equipe/notificacoes-internas';
 import { canonicoGlobal, quemAtendeDoPedido } from '@/lib/equipe/quem';
 import { acharUsuario, lerUsuarios } from '@/lib/equipe/usuarios';
 import { adicionarNotaInterna } from '@/lib/notas-internas';
-import { setResolved } from '@/lib/triage';
+import { setAutonomo, setResolved } from '@/lib/triage';
 import { dispararWebhook } from '@/lib/webhooks';
 
 export const runtime = 'nodejs';
@@ -91,6 +91,10 @@ export async function POST(req: Request) {
       const contatos = await contatosDeIdentidade();
       const agora = new Date().toISOString();
       for (const irmao of slugsIrmaosDeDm(slug, contatos, existentes)) await setResolved(irmao, agora);
+    } else if (acao === 'assumir') {
+      // Quem assume o atendimento assume no lugar da IA: desliga o modo autônomo no chat (e irmãos de DM).
+      const contatos = await contatosDeIdentidade();
+      for (const irmao of slugsIrmaosDeDm(slug, contatos, existentes)) await setAutonomo(irmao, false);
     }
     let atribuicao = await registrar(canonico, evento);
     if (acao === 'delegar' && typeof para === 'string') {

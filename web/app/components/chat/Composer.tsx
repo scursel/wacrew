@@ -76,6 +76,7 @@ export function Composer({
   departamento,
   droppedFiles,
   onSendFailed,
+  acoesBarra,
 }: {
   slug: string;
   groupJid: string | null;
@@ -94,6 +95,8 @@ export function Composer({
   departamento?: string | null;
   droppedFiles?: { files: File[]; nonce: number } | null;
   onSendFailed?: (item: { text: string; quotedId?: string; mentions?: string[]; error: string }) => void;
+  /** Ações rápidas da conversa (ex.: Assumir atendimento / Resolver) na barra superior do compositor. */
+  acoesBarra?: ReactNode;
 }) {
   const rotas = useRotas();
   const [modoNota, setModoNota] = useState(false);
@@ -590,7 +593,7 @@ export function Composer({
             : "border-line-2 bg-surface focus-within:border-accent focus-within:shadow-[0_0_0_3px_var(--color-accent-soft)]"
         }`}
       >
-        <div className="flex items-center gap-1 border-b border-line/70 px-2.5 py-1.5 text-[12px]">
+        <div className="flex flex-wrap items-center gap-1 border-b border-line/70 px-2.5 py-1.5 text-[12px]">
           <button
             type="button"
             onClick={() => {
@@ -618,10 +621,11 @@ export function Composer({
             Nota privada
           </button>
           {modoNota && (
-            <span className="ml-auto truncate text-[11.5px] text-warn max-[640px]:hidden">
+            <span className="truncate text-[11.5px] text-warn max-[640px]:hidden">
               Só a equipe vê · nunca vai pro WhatsApp
             </span>
           )}
+          {acoesBarra && <div className="ml-auto flex shrink-0 items-center gap-1.5">{acoesBarra}</div>}
         </div>
         {/* Dropdown de /respostas ou @participantes */}
         {dropdownItemsCount > 0 && (

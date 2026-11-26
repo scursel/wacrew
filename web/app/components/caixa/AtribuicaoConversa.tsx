@@ -17,6 +17,8 @@ export interface AtribuicaoConversaProps {
   /** Quem pode receber a conversa (sem quem está olhando). */
   equipe: { id: string; nome: string }[];
   ultimoAtendimento?: UltimoAtendimento | null;
+  /** Conversa em modo autônomo (IA respondendo sozinha). */
+  autonomo?: boolean;
 }
 
 const ROTA = "/api/atendimento/atribuicao";
@@ -49,7 +51,7 @@ export async function enviarAtribuicao(slug: string, corpo: CorpoAtribuicao, rot
  * soltar e delegar (a uma pessoa, com departamento opcional). Sem responsável, mostra
  * quem atendeu por último. Cada ação recarrega a página para mostrar o estado novo.
  */
-export function AtribuicaoConversa({ slug, eu, inicial, departamentos, equipe, ultimoAtendimento }: AtribuicaoConversaProps) {
+export function AtribuicaoConversa({ slug, eu, inicial, departamentos, equipe, ultimoAtendimento, autonomo = false }: AtribuicaoConversaProps) {
   const router = useRouter();
   const rotas = useRotas();
   const [ocupado, setOcupado] = useState(false);
@@ -120,14 +122,10 @@ export function AtribuicaoConversa({ slug, eu, inicial, departamentos, equipe, u
           ) : (
             <>Com {nomeResponsavel}</>
           )}
+          {autonomo && <span className="whitespace-nowrap text-id-ia">· IA respondendo</span>}
         </span>
 
         <div className="ml-auto flex items-center gap-1.5">
-          {livre && (
-            <Button size="sm" variant="ghost" disabled={ocupado} onClick={() => void executar({ acao: "assumir" })}>
-              Assumir
-            </Button>
-          )}
           {meu && (
             <Button size="sm" variant="ghost" disabled={ocupado} onClick={() => void executar({ acao: "soltar" })}>
               Soltar

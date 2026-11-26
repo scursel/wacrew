@@ -7,6 +7,7 @@ import { irmaosLiberados } from "@/lib/equipe/acesso";
 import { janelaDaConversa, totalDaConversa } from "@/lib/equipe/conversa";
 import { listaDaPagina, paginaDoAtendente } from "@/lib/equipe/pagina";
 import { dadosDoPainel } from "@/lib/painel-cliente";
+import { readTriage } from "@/lib/triage";
 import { estaResolvida, ultimoAtendimento } from "@/lib/ultimo-atendimento";
 
 export const dynamic = "force-dynamic";
@@ -18,11 +19,12 @@ export default async function AtendimentoChat({ params }: { params: Promise<{ sl
   if (!p || !p.a.chats.has(slug)) notFound();
   const irmaos = await irmaosLiberados(p.a, slug);
   // A lista vem do mesmo cache da renderização do layout: nada de listGroups de novo.
-  const [messages, total, lista, listas] = await Promise.all([
+  const [messages, total, lista, listas, triage] = await Promise.all([
     janelaDaConversa(irmaos, { limit: 150 }),
     totalDaConversa(irmaos),
     listaDaPagina(),
     Promise.all(irmaos.map((s) => readGroupRecords(s))),
+    readTriage(),
   ]);
   const fallback = conversationName(slug, messages.at(-1)?.group ?? slug, messages);
   const canonico = p.canonicoDe(slug);
@@ -48,6 +50,7 @@ export default async function AtendimentoChat({ params }: { params: Promise<{ sl
       atribuicao={atribuicao}
       resolvida={await estaResolvida(irmaos, undefined, registros)}
       copilotoLiberado={Boolean(p.a.usuario.copilotoLiberado)}
+      autonomoInicial={irmaos.some((s) => Boolean(triage.autonomo[s]))}
     />
   );
 }

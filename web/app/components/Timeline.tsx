@@ -202,6 +202,7 @@ export function Timeline({
   participantes,
   atendenteNome = null,
   departamentoNome = null,
+  acoesComposer,
 }: {
   slug: string;
   groupName: string;
@@ -222,6 +223,8 @@ export function Timeline({
   participantes?: ParticipanteGrupo[];
   atendenteNome?: string | null;
   departamentoNome?: string | null;
+  /** Ações rápidas (Assumir atendimento / Resolver) exibidas junto à caixa de mensagem. */
+  acoesComposer?: ReactNode;
 }) {
   const [messages, setMessages] = useState<MessageView[]>(initial);
   const [ultimoAtendimento, setUltimoAtendimento] = useState(ultimoAtendimentoInicial);
@@ -1084,6 +1087,7 @@ export function Timeline({
         atendente={atendenteNome}
         departamento={departamentoNome}
         droppedFiles={droppedFiles}
+        acoesBarra={acoesComposer}
         onSendFailed={(item) =>
           setFailedMsgs((cur) => [
             ...cur,
