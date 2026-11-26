@@ -40,5 +40,5 @@ export async function GET(req: NextRequest) {
   if (!ehEmailDoDono(email)) return falha("google_sem_acesso");
 
   const destino = caminhoInterno(req.cookies.get(COOKIE_DESTINO_LOGIN)?.value);
-  return comCookieDeSessao(limpar(NextResponse.redirect(new URL(destino, origem))), novaSessao(cred.user, "dono", 0), chave);
+  return comCookieDeSessao(limpar(NextResponse.redirect(new URL(destino, origem))), novaSessao(cred.user, "dono", 0), chave, req);
 }

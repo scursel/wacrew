@@ -83,8 +83,10 @@ describe('montarPedidoDepartamento', () => {
 });
 
 describe('classificarPendentes', () => {
-  it('sem OPENROUTER_API_KEY não chama fetch e não grava nada', async () => {
-    vi.stubEnv('OPENROUTER_API_KEY', '');
+  const destino9r = { via: '9router', baseUrl: 'http://9r.test/v1', chave: 'chave-9r', modelo: 'leve' };
+
+  it('sem modelo escolhido não chama fetch e não grava nada, mesmo com OPENROUTER_API_KEY no ambiente', async () => {
+    vi.stubEnv('OPENROUTER_API_KEY', 'chave-openrouter');
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     await dep.alterarDepartamentos((l) => { l.push(...deps); });
@@ -96,8 +98,8 @@ describe('classificarPendentes', () => {
     expect((await atrib.lerAtribuicoes())['grupo-sem-chave']).toBeUndefined();
   });
 
-  it('com chave, grava a sugestão da IA como origem ia', async () => {
-    vi.stubEnv('OPENROUTER_API_KEY', 'chave-teste');
+  it('com modelo escolhido, grava a sugestão da IA como origem ia', async () => {
+    escolha.destino = destino9r;
     const fetchMock = respostaIA({ departamento: 'suporte' });
     vi.stubGlobal('fetch', fetchMock);
     mock.msgs = [{ id: '2', timestamp: '2026-11-25T10:00:00.000Z', fromMe: false, sender: '5511999@s.whatsapp.net', senderName: 'Fulano', type: 'text', text: 'o sistema caiu' }];
@@ -111,7 +113,7 @@ describe('classificarPendentes', () => {
   });
 
   it('conversa que já tem departamento ou já foi tentada não é reclassificada', async () => {
-    vi.stubEnv('OPENROUTER_API_KEY', 'chave-teste');
+    escolha.destino = destino9r;
     const fetchMock = respostaIA({ departamento: 'financeiro' });
     vi.stubGlobal('fetch', fetchMock);
     await atrib.registrar('grupo-manual', { tipo: 'departamento', por: 'ana', departamento: 'suporte' });
@@ -123,7 +125,7 @@ describe('classificarPendentes', () => {
     expect((await atrib.lerAtribuicoes())['grupo-manual']?.departamento).toBe('suporte');
   });
   it('falha da IA espera antes de tentar a mesma conversa de novo', async () => {
-    vi.stubEnv('OPENROUTER_API_KEY', 'chave-teste');
+    escolha.destino = destino9r;
     const fetchMock = vi.fn(async () => new Response('erro', { status: 500 }));
     vi.stubGlobal('fetch', fetchMock);
     mock.msgs = [{ id: '3', timestamp: '2026-11-25T10:00:00.000Z', fromMe: false, sender: '5511999@s.whatsapp.net', senderName: 'Fulano', type: 'text', text: 'preciso do boleto' }];
@@ -136,7 +138,7 @@ describe('classificarPendentes', () => {
   });
   it('destino 9router: chama o 9router com a chave salva e o combo escolhido', async () => {
     vi.stubEnv('OPENROUTER_API_KEY', 'chave-openrouter');
-    escolha.destino = { via: '9router', baseUrl: 'http://9r.test/v1', chave: 'chave-9r', modelo: 'leve' };
+    escolha.destino = destino9r;
     const fetchMock = respostaIA({ departamento: 'suporte' });
     vi.stubGlobal('fetch', fetchMock);
     mock.msgs = [{ id: '5', timestamp: '2026-11-25T10:00:00.000Z', fromMe: false, sender: '5511999@s.whatsapp.net', senderName: 'Fulano', type: 'text', text: 'o sistema caiu' }];
@@ -151,7 +153,7 @@ describe('classificarPendentes', () => {
 
   it('com chave do 9router e sem OPENROUTER_API_KEY, classifica pelo 9router (a guarda olha o destino)', async () => {
     vi.stubEnv('OPENROUTER_API_KEY', '');
-    escolha.destino = { via: '9router', baseUrl: 'http://9r.test/v1', chave: 'chave-9r', modelo: 'leve' };
+    escolha.destino = destino9r;
     const fetchMock = respostaIA({ departamento: 'financeiro' });
     vi.stubGlobal('fetch', fetchMock);
     mock.msgs = [{ id: '6', timestamp: '2026-11-25T10:00:00.000Z', fromMe: false, sender: '5511999@s.whatsapp.net', senderName: 'Fulano', type: 'text', text: 'preciso do boleto' }];
@@ -163,7 +165,7 @@ describe('classificarPendentes', () => {
   });
 
   it('duas montagens da fila ao mesmo tempo não classificam a mesma conversa duas vezes (nem além do 1º lote)', async () => {
-    vi.stubEnv('OPENROUTER_API_KEY', 'chave-teste');
+    escolha.destino = destino9r;
     let liberar: () => void = () => {};
     const segura = new Promise<void>((r) => {
       liberar = r;
@@ -183,5 +185,60 @@ describe('classificarPendentes', () => {
     await Promise.all([a, b]);
 
     expect(fetchMock).toHaveBeenCalledTimes(slugs.length);
+  });
+});
+
+describe('resumo de carona', () => {
+  const msg = (id: string, texto: string) => ({ id, timestamp: '2026-11-25T10:00:00.000Z', fromMe: false, sender: '5511999@s.whatsapp.net', senderName: 'Fulano', type: 'text', text: texto });
+
+  it('a mesma chamada da pré-seleção guarda o resumo, sem chamada a mais', async () => {
+    escolha.destino = { via: '9router', baseUrl: 'http://9r.test/v1', chave: 'chave-9r', modelo: 'leve' };
+    const fetchMock = respostaIA({ departamento: 'financeiro', resumo: 'Cliente quer a segunda via do boleto.' });
+    vi.stubGlobal('fetch', fetchMock);
+    mock.msgs = [msg('r1', 'me manda o boleto de novo')];
+
+    await mod.classificarPendentes(['grupo-resumo']);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const { lerResumos } = await import('../resumo-conversa');
+    expect((await lerResumos())['grupo-resumo']?.texto).toBe('Cliente quer a segunda via do boleto.');
+  });
+
+  it('Atualizar refaz só o resumo pelo 9router; conteúdo em partes é aceito', async () => {
+    escolha.destino = { via: '9router', baseUrl: 'http://9r.test/v1', chave: 'chave-9r', modelo: 'leve' };
+    const partes = [
+      { type: 'thinking', thinking: [{ type: 'text', text: 'hmm' }] },
+      { type: 'text', text: JSON.stringify({ resumo: 'Orçamento aprovado, falta marcar o dia.' }) },
+    ];
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => new Response(JSON.stringify({ choices: [{ message: { content: partes } }] }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    mock.msgs = [msg('r2', 'pode fazer')];
+
+    const r = await mod.resumirConversa('grupo-atualizar');
+
+    expect(r.texto).toBe('Orçamento aprovado, falta marcar o dia.');
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe('http://9r.test/v1/chat/completions');
+  });
+
+  it('dois Atualizar ao mesmo tempo fazem uma chamada só; resposta fora do formato vira erro legível', async () => {
+    escolha.destino = { via: '9router', baseUrl: 'http://9r.test/v1', chave: 'chave-9r', modelo: 'leve' };
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => new Response(JSON.stringify({ choices: [{ message: { content: 'texto solto' } }] }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    mock.msgs = [msg('r4', 'oi')];
+
+    const [a, b] = await Promise.allSettled([mod.resumirConversa('grupo-dois'), mod.resumirConversa('grupo-dois')]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(a.status === 'rejected' && String(a.reason)).toMatch(/fora do formato/);
+    expect(b.status).toBe('rejected');
+  });
+
+  it('Atualizar sem modelo escolhido não chama ninguém', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    mock.msgs = [msg('r3', 'oi')];
+    // escolha.destino null → o mock devolve o padrão com a chave vazia passada pelo código.
+    await expect(mod.resumirConversa('grupo-sem-modelo')).rejects.toThrow(/Modelos de IA/);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

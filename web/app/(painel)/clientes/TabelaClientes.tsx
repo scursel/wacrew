@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type ReactNode, useState } from "react";
 import { EditorEtiquetas } from "@/app/components/Etiqueta";
+import { BotaoOrcamento } from "@/app/components/BotaoOrcamento";
 import { useRotas } from "@/app/components/RotasPainel";
 import { AnelEspera, Avatar, Contador, Etiqueta, MedidorUso, MiniBarras, cn } from "@/app/components/ui";
 import type { ClienteLinha } from "@/lib/clientes";
@@ -38,6 +39,7 @@ import {
 const ICONE: Record<ColunaId | "cliente", ReactNode> = {
   cliente: <IcPessoas className="h-3.5 w-3.5" />,
   tipo: <IcHash className="h-3.5 w-3.5" />,
+  orcamentos: <IcDoc className="h-3.5 w-3.5" />,
   etiquetas: <IcEtiqueta className="h-3.5 w-3.5" />,
   contrato: <IcDoc className="h-3.5 w-3.5" />,
   uso: <IcGrafico className="h-3.5 w-3.5" />,
@@ -287,6 +289,12 @@ function Celula({
   switch (c.id) {
     case "tipo":
       return <td className={classe}>{l.tipo === "dm" ? "DM" : "Grupo"}</td>;
+    case "orcamentos":
+      return (
+        <td className={classe}>
+          <BotaoOrcamento slug={l.slug} total={l.orcamentos} ultimo={l.ultimoOrcamento} compacto />
+        </td>
+      );
     case "etiquetas":
       return (
         <td className={classe}>

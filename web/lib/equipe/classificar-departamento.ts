@@ -3,6 +3,9 @@ import { fundirMensagens, slugsIrmaosDeDm } from '../dm-irmaos';
 import { historicoDaConversa, type LinhaHistorico, MODELO_PADRAO } from '../estilo/postura';
 import type { MessageView } from '../data';
 import { type DestinoIA, resolverIA } from '../ia/provedor';
+import { AVISO_SEM_MODELO } from '../ia/aviso';
+import { textoDoDelta } from '../ia/texto';
+import { INSTRUCAO_RESUMO, limparResumo, type ResumoConversa, salvarResumo } from '../resumo-conversa';
 import { lerAtribuicoes, registrar } from './atribuicoes';
 import { type Departamento, lerDepartamentos } from './departamentos';
 
@@ -17,10 +20,17 @@ const N_HISTORICO = 30;
 const MAX_PARALELO = 3;
 const TIMEOUT_MS = 20_000;
 
-const INSTRUCOES = `Você classifica uma conversa de WhatsApp de cliente em um dos departamentos da empresa.
-Use SOMENTE os ids da lista. Se nenhum departamento se encaixa com clareza, responda null.
+const INSTRUCOES = `Você classifica uma conversa de WhatsApp de cliente em um dos departamentos da empresa
+e escreve um resumo curto dela.
+departamento: use SOMENTE os ids da lista. Se nenhum departamento se encaixa com clareza, use null.
+${INSTRUCAO_RESUMO}
 
-Responda SÓ JSON: {"departamento": "<id>"} ou {"departamento": null}`;
+Responda SÓ JSON: {"departamento": "<id>" ou null, "resumo": "<texto>"}`;
+
+const INSTRUCOES_SO_RESUMO = `Você resume uma conversa de WhatsApp de cliente.
+${INSTRUCAO_RESUMO}
+
+Responda SÓ JSON: {"resumo": "<texto>"}`;
 
 /** Conversas em classificação agora, para uma mesma conversa não disparar duas vezes. */
 const emCurso = new Set<string>();
@@ -67,6 +77,17 @@ async function historicoDo(slug: string): Promise<LinhaHistorico[]> {
   return historicoDaConversa(msgs, c, N_HISTORICO);
 }
 
+/** JSON da resposta (conteúdo em string ou em partes, com ou sem cerca de código). */
+async function lerJson(res: Response): Promise<unknown> {
+  const corpo = (await res.json()) as { choices?: { message?: { content?: unknown } }[] };
+  const conteudo = textoDoDelta(corpo?.choices?.[0]?.message?.content).replace(/^```(?:json)?\s*|\s*```$/g, '');
+  try {
+    return JSON.parse(conteudo);
+  } catch {
+    throw new Error('o modelo respondeu fora do formato esperado; tente de novo');
+  }
+}
+
 /** `slug` já está em `emCurso` (marcado por `classificarPendentes`); sai dele no fim. */
 async function classificarUm(slug: string, deps: Departamento[], destino: DestinoIA): Promise<void> {
   try {
@@ -75,7 +96,7 @@ async function classificarUm(slug: string, deps: Departamento[], destino: Destin
       await registrar(slug, { tipo: 'sugestao', departamento: null });
       return;
     }
-    const endpoint = `${destino.via === '9router' ? destino.baseUrl : BASE_OPENROUTER}/chat/completions`;
+    const endpoint = `${destino.baseUrl}/chat/completions`;
     const res = await fetch(endpoint, {
       method: 'POST',
       headers: { Authorization: `Bearer ${destino.chave}`, 'Content-Type': 'application/json', 'X-Title': 'whatsapp-collector departamento' },
@@ -86,10 +107,12 @@ async function classificarUm(slug: string, deps: Departamento[], destino: Destin
       falhouEm.set(slug, Date.now());
       return;
     }
-    const corpo = (await res.json()) as { choices?: { message?: { content?: unknown } }[] };
-    const conteudo = String(corpo?.choices?.[0]?.message?.content ?? '').replace(/^```(?:json)?\s*|\s*```$/g, '');
-    const departamento = lerDepartamento(JSON.parse(conteudo), deps);
+    const json = await lerJson(res);
+    const departamento = lerDepartamento(json, deps);
     await registrar(slug, { tipo: 'sugestao', departamento });
+    // Resumo de carona: a mesma leitura, nenhuma chamada a mais.
+    const resumo = limparResumo((json as { resumo?: unknown } | null)?.resumo);
+    if (resumo) await salvarResumo(slug, resumo);
   } catch {
     // Falha da IA não bloqueia a fila: a conversa segue sem departamento e tenta de novo depois da espera.
     falhouEm.set(slug, Date.now());
@@ -100,11 +123,8 @@ async function classificarUm(slug: string, deps: Departamento[], destino: Destin
 
 /** Classifica as conversas em espera que ainda não têm departamento nem foram tentadas. Não lança. */
 export async function classificarPendentes(slugs: string[]): Promise<void> {
-  const destino = await resolverIA('departamento', {
-    baseUrl: BASE_OPENROUTER,
-    chave: (process.env.OPENROUTER_API_KEY ?? '').trim(),
-    modelo: process.env.WAC_DEPARTAMENTO_MODEL?.trim() || MODELO_PADRAO,
-  });
+  // Só o modelo escolhido na tela de IA: sem escolha, a chave vem vazia e nada sai.
+  const destino = await resolverIA('departamento', { baseUrl: BASE_OPENROUTER, chave: '', modelo: MODELO_PADRAO });
   if (!destino.chave.trim()) return;
   const deps = await lerDepartamentos();
   if (!deps.length) return;
@@ -121,4 +141,47 @@ export async function classificarPendentes(slugs: string[]): Promise<void> {
   for (let i = 0; i < fila.length; i += MAX_PARALELO) {
     await Promise.all(fila.slice(i, i + MAX_PARALELO).map((s) => classificarUm(s, deps, destino)));
   }
+}
+
+/**
+ * Botão Atualizar do painel: refaz só o resumo, com o mesmo modelo da pré-seleção
+ * de departamento. Lança com motivo legível se a IA está desligada ou falhou.
+ */
+export function resumirConversa(slug: string): Promise<ResumoConversa> {
+  // Dois cliques (ou duas abas) no mesmo chat esperam a mesma chamada.
+  const andando = resumindo.get(slug);
+  if (andando) return andando;
+  const p = resumirAgora(slug).finally(() => resumindo.delete(slug));
+  resumindo.set(slug, p);
+  return p;
+}
+
+const resumindo = new Map<string, Promise<ResumoConversa>>();
+
+async function resumirAgora(slug: string): Promise<ResumoConversa> {
+  const destino = await resolverIA('departamento', { baseUrl: BASE_OPENROUTER, chave: '', modelo: MODELO_PADRAO });
+  if (!destino.chave.trim()) throw new Error(AVISO_SEM_MODELO);
+  const historico = await historicoDo(slug);
+  if (!historico.length) throw new Error('conversa sem mensagens para resumir');
+  const conversa = historico
+    .map((l) => `[${l.hora}] ${l.quem === 'eu' ? 'EU' : l.quem === 'cliente' ? `CLIENTE (${l.nome})` : `EQUIPE (${l.nome})`}: ${l.texto}`)
+    .join('\n');
+  const res = await fetch(`${destino.baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${destino.chave}`, 'Content-Type': 'application/json', 'X-Title': 'whatsapp-collector resumo' },
+    body: JSON.stringify({
+      model: destino.modelo,
+      temperature: 0,
+      response_format: { type: 'json_object' },
+      messages: [
+        { role: 'system', content: INSTRUCOES_SO_RESUMO },
+        { role: 'user', content: `CONVERSA (mais antiga primeiro):\n${conversa}` },
+      ],
+    }),
+    signal: AbortSignal.timeout(TIMEOUT_MS * 2),
+  });
+  if (!res.ok) throw new Error(`9router HTTP ${res.status}`);
+  const resumo = limparResumo((((await lerJson(res)) ?? {}) as { resumo?: unknown }).resumo);
+  if (!resumo) throw new Error('o modelo não devolveu um resumo');
+  return salvarResumo(slug, resumo);
 }

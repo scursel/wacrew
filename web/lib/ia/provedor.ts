@@ -10,10 +10,12 @@ export interface DestinoIA {
 
 const TIMEOUT_LISTA_MS = 10_000;
 
+export { AVISO_SEM_MODELO } from './aviso';
+
 /**
  * Endpoint/chave/modelo de uma função. Só vai ao 9router quando a tela escolheu
- * um modelo E existe chave salva; senão devolve o padrão (OpenRouter + env)
- * intacto — a chave de um provedor nunca vaza pro outro.
+ * um modelo E existe chave salva. Sem isso a função fica desligada (chave vazia):
+ * nada sai para o provedor do ambiente (OpenRouter, Anthropic), nunca.
  */
 export async function resolverIA(
   funcao: FuncaoIA,
@@ -24,7 +26,7 @@ export async function resolverIA(
   if (modelo && cfg.chave.trim()) {
     return { via: '9router', baseUrl: cfg.baseUrl, chave: cfg.chave, modelo };
   }
-  return { via: 'padrao', ...padrao };
+  return { via: 'padrao', ...padrao, chave: '' };
 }
 
 /** Nenhuma mensagem de erro pode carregar a chave do operador. */

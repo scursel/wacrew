@@ -33,7 +33,7 @@ const CHAVE_METRICAS = "wac-metricas-aberto";
 const SEMENTES = ["Pessoal"];
 const ORDEM_PADRAO: Ordem = { chave: "espera", desc: true };
 const SEM_FILTRO: FiltrosExtras = { segmento: "todos", etiqueta: null, contrato: null };
-const CHAVES_ORDEM: ChaveOrdem[] = ["espera", "uso", "atividade", "entregas", "ultima", "nome", "contrato"];
+const CHAVES_ORDEM: ChaveOrdem[] = ["espera", "uso", "atividade", "entregas", "ultima", "nome", "contrato", "orcamento"];
 
 function ler(chave: string): string | null {
   try {
@@ -154,7 +154,7 @@ export function ClientesView({ linhas, kanban, agoraMs }: { linhas: ClienteLinha
       title={contexto === "trabalho" ? "Nenhum cliente ainda" : "Nenhuma conversa ainda"}
       description={
         contexto === "trabalho"
-          ? "Grupos monitorados e conversas com etiqueta de empresa, contrato ou entrega aparecem aqui. As outras ficam em Todas as conversas."
+          ? "Quem recebeu orçamento (texto, PDF ou foto) aparece aqui sozinho. Também entram grupos monitorados e conversas com etiqueta de empresa, contrato ou entrega. As outras ficam em Todas as conversas."
           : "As conversas aparecem aqui assim que o coletor guardar a primeira mensagem."
       }
     />

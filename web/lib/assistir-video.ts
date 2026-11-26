@@ -9,6 +9,8 @@ import { mkdtemp, readdir, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { extname, join } from 'node:path';
 import { promisify } from 'node:util';
+import { AVISO_SEM_MODELO } from './ia/aviso';
+import { semChave, textoDoDelta } from './ia/texto';
 import { resolverIA } from './ia/provedor';
 
 const pexec = promisify(execFile);
@@ -59,10 +61,10 @@ export function montarPedido(videoUrl: string, pergunta: string | undefined, mod
 
 export function lerResposta(json: unknown): { texto: string; tokens: number | null; custoUsd: number | null } {
   const d = json as {
-    choices?: Array<{ message?: { content?: string | null } }>;
+    choices?: Array<{ message?: { content?: unknown } }>;
     usage?: { total_tokens?: number; cost?: number };
   };
-  const texto = (d?.choices?.[0]?.message?.content ?? '').trim();
+  const texto = textoDoDelta(d?.choices?.[0]?.message?.content).trim();
   if (!texto) throw new Error('o Gemini respondeu sem texto');
   return {
     texto,
@@ -137,7 +139,6 @@ export interface AssistirOpcoes {
   arquivo?: string;
   pergunta?: string;
   modelo?: string;
-  chave?: string;
   duracaoMaxS?: number;
   limiteBytes?: number;
   timeoutMs?: number;
@@ -155,24 +156,20 @@ export interface AssistirResultado {
 }
 
 export async function assistirVideo(o: AssistirOpcoes): Promise<AssistirResultado> {
-  const destino = await resolverIA('video', {
-    baseUrl: BASE_OPENROUTER,
-    chave: (process.env.OPENROUTER_API_KEY ?? '').trim(),
-    modelo: modeloDoVideo(),
-  });
-  // Chave/modelo explícitos mantêm o contrato antigo: OpenRouter.
-  const via = o.chave !== undefined ? 'padrao' : destino.via;
-  const chave = (o.chave ?? destino.chave).trim();
+  // Só o modelo escolhido na tela de IA: sem escolha, a chave vem vazia e nada sai.
+  const destino = await resolverIA('video', { baseUrl: BASE_OPENROUTER, chave: '', modelo: modeloDoVideo() });
+  const via = destino.via;
+  const chave = destino.chave.trim();
   if (!chave) {
     throw new Error(
       via === '9router'
         ? 'chave do 9router ausente: salve a chave na tela de modelos de IA'
-        : 'OPENROUTER_API_KEY ausente: adicione no arquivo de variáveis da raiz do repositório',
+        : `${AVISO_SEM_MODELO} (vídeo)`,
     );
   }
   if (!o.url && !o.arquivo) throw new Error('informe url ou arquivo do vídeo');
-  const modelo = o.modelo ? modeloDoVideo(o.modelo) : via === "9router" ? destino.modelo : modeloDoVideo();
-  const endpoint = `${via === '9router' ? destino.baseUrl : BASE_OPENROUTER}/chat/completions`;
+  const modelo = o.modelo ? modeloDoVideo(o.modelo) : destino.modelo;
+  const endpoint = `${destino.baseUrl}/chat/completions`;
   const nome = via === '9router' ? '9router' : 'OpenRouter';
   const fetchFn = o.fetchFn ?? fetch;
   const medir = o.medirDuracao ?? duracaoPorFfprobe;
@@ -212,7 +209,7 @@ export async function assistirVideo(o: AssistirOpcoes): Promise<AssistirResultad
       signal: AbortSignal.timeout(o.timeoutMs ?? 300_000),
     });
     const corpo = await res.text();
-    if (!res.ok) throw new Error(erroOpenRouter(res.status, corpo, nome));
+    if (!res.ok) throw new Error(semChave(erroOpenRouter(res.status, corpo, nome), chave));
     const r = lerResposta(JSON.parse(corpo));
     return { ...r, modelo, fonte };
   } finally {

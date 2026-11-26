@@ -472,6 +472,8 @@ function montarCardsEscritorio(
       slug,
       nome: nomeExibicao,
       tipo,
+      orcamentos: 0,
+      ultimoOrcamento: null,
       avatarPath: summary?.avatarPath ?? null,
       ultimaPreview,
       ultimaTimestamp,

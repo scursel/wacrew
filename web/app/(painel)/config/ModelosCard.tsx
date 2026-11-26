@@ -6,7 +6,7 @@ import { Aviso, Badge, BotaoConfirmar, Button, Card, Field, Icone, Input, Select
 import { Carregando, FalhaAoCarregar } from "./partes";
 import { ANCORA_CARD, type AoResumir } from "./secoes";
 
-export type FuncaoIA = "copiloto" | "rascunho" | "postura" | "departamento" | "video" | "transcricao";
+export type FuncaoIA = "copiloto" | "rascunho" | "postura" | "departamento" | "video" | "transcricao" | "orcamento";
 
 const URL_9ROUTER_PADRAO = "http://100.115.118.6:20128/v1";
 
@@ -45,17 +45,17 @@ interface RespostaTestar {
 interface DefinicaoFuncao {
   id: FuncaoIA;
   rotulo: string;
-  padrao: string;
   tipo: "combo" | "fala";
 }
 
 const FUNCOES: DefinicaoFuncao[] = [
-  { id: "copiloto", rotulo: "Copiloto: resumir e conversar", padrao: "gpt-4o-mini · OpenRouter", tipo: "combo" },
-  { id: "rascunho", rotulo: "Copiloto: rascunhar e sugerir", padrao: "gpt-4o-mini · OpenRouter", tipo: "combo" },
-  { id: "postura", rotulo: "Postura (revisão antes de enviar)", padrao: "gemini-3.8-flash · OpenRouter", tipo: "combo" },
-  { id: "departamento", rotulo: "Pré-seleção de departamento", padrao: "gemini-3.8-flash · OpenRouter", tipo: "combo" },
-  { id: "video", rotulo: "Assistir vídeo", padrao: "gemini-4-argon · OpenRouter", tipo: "combo" },
-  { id: "transcricao", rotulo: "Transcrição de áudio", padrao: "scribe-v2 · OpenRouter", tipo: "fala" },
+  { id: "copiloto", rotulo: "Copiloto: resumir e conversar", tipo: "combo" },
+  { id: "rascunho", rotulo: "Copiloto: rascunhar e sugerir", tipo: "combo" },
+  { id: "postura", rotulo: "Postura (revisão antes de enviar)", tipo: "combo" },
+  { id: "departamento", rotulo: "Pré-seleção de departamento e resumo", tipo: "combo" },
+  { id: "video", rotulo: "Assistir vídeo", tipo: "combo" },
+  { id: "transcricao", rotulo: "Transcrição de áudio", tipo: "fala" },
+  { id: "orcamento", rotulo: "Reconhecer orçamento em foto", tipo: "combo" },
 ];
 
 type FeedbackConexao = { tom: "ok" | "erro"; texto: string } | null;
@@ -171,7 +171,7 @@ export function ModelosCard({ aoResumir }: { aoResumir: AoResumir }) {
 
   useEffect(() => {
     if (!dados) return;
-    aoResumir("modelos", ativo9router ? { texto: "9router", tom: "ok" } : { texto: "padrão" });
+    aoResumir("modelos", ativo9router ? { texto: "9router", tom: "ok" } : { texto: "desligada" });
   }, [aoResumir, ativo9router, dados]);
 
   function mostrarFeedbackConexao(fb: FeedbackConexao, autoLimpar = false) {
@@ -405,14 +405,14 @@ export function ModelosCard({ aoResumir }: { aoResumir: AoResumir }) {
       acoes={
         dados ? (
           <Badge variant={ativo9router ? "ok" : "neutral"} dot={ativo9router}>
-            {ativo9router ? "9router" : "Padrão"}
+            {ativo9router ? "9router" : "Desligada"}
           </Badge>
         ) : undefined
       }
       rodape={
         dados ? (
           <span>
-            Funções em &ldquo;Padrão (como hoje)&rdquo; continuam na OpenRouter. Sem fallback automático se o 9router falhar.
+            Sem modelo escolhido a função fica desligada — nada vai para a OpenRouter nem para outros provedores sem você escolher aqui. Sem fallback automático se o 9router falhar.
           </span>
         ) : undefined
       }
@@ -626,7 +626,9 @@ export function ModelosCard({ aoResumir }: { aoResumir: AoResumir }) {
                       <label htmlFor={selectId} className="block text-[13.5px] font-medium text-fg">
                         {f.rotulo}
                       </label>
-                      <p className="mt-0.5 text-[12px] text-fg-faint">Padrão atual: {f.padrao}</p>
+                      <p className="mt-0.5 text-[12px] text-fg-faint">
+                        {valorAtual ? `9router: ${valorAtual}` : "Sem modelo escolhido: função desligada"}
+                      </p>
                     </div>
 
                     <div className="flex items-center gap-2 max-[860px]:w-full">
@@ -638,7 +640,7 @@ export function ModelosCard({ aoResumir }: { aoResumir: AoResumir }) {
                         onChange={(e) => void aoTrocarModelo(f.id, e.target.value)}
                         className="min-w-[210px] max-[860px]:min-w-0 max-[860px]:flex-1"
                       >
-                        <option value="">Padrão (como hoje)</option>
+                        <option value="">Desligada</option>
                         {foraDaLista && (
                           <option value={valorAtual}>
                             {listaBase.length > 0 ? `${valorAtual} (fora da lista)` : valorAtual}

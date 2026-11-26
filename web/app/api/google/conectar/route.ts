@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { cookieSeguro } from "@/app/api/login/sessao";
 import {
   CAMINHO_CALLBACK,
   STATE_COOKIE,
@@ -21,7 +22,7 @@ export async function GET(req: Request) {
   const res = NextResponse.redirect(urlDeAutorizacao(cfg, `${origem}${CAMINHO_CALLBACK}`, state));
   res.cookies.set(STATE_COOKIE, state, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: cookieSeguro(req),
     sameSite: "lax",
     path: "/api/google",
     maxAge: STATE_VALIDADE_S,

@@ -79,5 +79,5 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "usuário ou senha incorretos" }, { status: 401 });
   }
 
-  return comCookieDeSessao(NextResponse.json({ ok: true, destino: destino(sessao.p, given?.next) }), sessao, chave);
+  return comCookieDeSessao(NextResponse.json({ ok: true, destino: destino(sessao.p, given?.next) }), sessao, chave, req);
 }

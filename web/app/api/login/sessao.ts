@@ -1,11 +1,18 @@
 import type { NextResponse } from "next/server";
-import { assinarSessao, SESSION_COOKIE, type Sessao, VALIDADE_S } from "@/lib/equipe/sessao";
+import { assinarSessao, cookieSeguro, SESSION_COOKIE, type Sessao, VALIDADE_S } from "@/lib/equipe/sessao";
+
+export { cookieSeguro };
 
 /** Grava o cookie de sessão com as mesmas opções em todo jeito de entrar (senha, Google, código). */
-export function comCookieDeSessao<T extends NextResponse>(res: T, sessao: Sessao, chave: string): T {
+export function comCookieDeSessao<T extends NextResponse>(
+  res: T,
+  sessao: Sessao,
+  chave: string,
+  req?: { url: string; headers: Headers },
+): T {
   res.cookies.set(SESSION_COOKIE, assinarSessao(sessao, chave), {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: cookieSeguro(req),
     sameSite: "lax",
     path: "/",
     maxAge: VALIDADE_S[sessao.p],

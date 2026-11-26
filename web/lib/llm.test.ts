@@ -25,64 +25,42 @@ const prompt = (texto: string): NeutralPrompt => ({
 });
 
 describe('resolveProvider', () => {
-  it('sem env e sem 9router → null, como hoje', async () => {
-    vi.stubEnv('COPILOT_OPENAI_API_KEY', '');
-    vi.stubEnv('ANTHROPIC_API_KEY', '');
+  it('sem modelo na tela → null, mesmo com chaves de OpenRouter/Anthropic no ambiente', async () => {
+    vi.stubEnv('COPILOT_OPENAI_API_KEY', 'chave-openrouter');
+    vi.stubEnv('ANTHROPIC_API_KEY', 'chave-anthropic');
+    vi.stubEnv('OPENROUTER_API_KEY', 'chave-openrouter');
     expect(await provider()).toBeNull();
   });
 
   it('só a chave do 9router basta para o copiloto funcionar', async () => {
-    vi.stubEnv('COPILOT_OPENAI_API_KEY', '');
-    vi.stubEnv('ANTHROPIC_API_KEY', '');
     escolha.funcoes.copiloto = { baseUrl: 'http://9r.test/v1', chave: 'chave-9r', modelo: 'leve' };
 
     const p = await provider();
 
-    expect(p).not.toBeNull();
     expect(p?.label).toBe('9router');
     expect(p?.modelFor('resumir')).toBe('leve');
   });
 
-  it('copiloto no 9router e rascunho padrão: cada ação usa o seu destino (Review Focus 5)', async () => {
-    vi.stubEnv('COPILOT_OPENAI_API_KEY', 'chave-openrouter');
-    vi.stubEnv('COPILOT_OPENAI_MODEL', 'openai/gpt-4o-mini');
-    vi.stubEnv('COPILOT_OPENAI_MODEL_DRAFT', '');
+  it('cada ação usa o modelo da sua função', async () => {
     escolha.funcoes.copiloto = { baseUrl: 'http://9r.test/v1', chave: 'chave-9r', modelo: 'leve' };
+    escolha.funcoes.rascunho = { baseUrl: 'http://9r.test/v1', chave: 'chave-9r', modelo: 'redacao' };
 
     const p = await provider();
 
-    expect(p?.modelFor('resumir')).toBe('leve');
     expect(p?.destinoFor('resumir')).toEqual({ tipo: '9router', baseUrl: 'http://9r.test/v1', apiKey: 'chave-9r', modelo: 'leve' });
-
-    expect(p?.modelFor('rascunhar')).toBe('openai/gpt-4o-mini');
-    expect(p?.destinoFor('rascunhar')).toEqual({
-      tipo: 'openai',
-      baseUrl: 'https://openrouter.ai/api/v1',
-      apiKey: 'chave-openrouter',
-      modelo: 'openai/gpt-4o-mini',
-    });
+    for (const a of ['rascunhar', 'sugerir', 'followup'] as const) expect(p?.modelFor(a)).toBe('redacao');
   });
 
-  it('modelo de rascunho do env vale para rascunhar/sugerir/followup', async () => {
+  it('função sem modelo: a ação é recusada antes do stream, com o aviso da tela', async () => {
     vi.stubEnv('COPILOT_OPENAI_API_KEY', 'chave-openrouter');
-    vi.stubEnv('COPILOT_OPENAI_MODEL', 'modelo-raciocinio');
-    vi.stubEnv('COPILOT_OPENAI_MODEL_DRAFT', 'modelo-redacao');
+    escolha.funcoes.copiloto = { baseUrl: 'http://9r.test/v1', chave: 'chave-9r', modelo: 'leve' };
+    const { resolveProvider, temDestino } = await import('./llm');
 
-    const p = await provider();
+    const p = await resolveProvider();
 
-    expect(p?.modelFor('resumir')).toBe('modelo-raciocinio');
-    expect(p?.modelFor('sugerir')).toBe('modelo-redacao');
-    expect(p?.modelFor('followup')).toBe('modelo-redacao');
-  });
-
-  it('a chave do 9router nunca vai pro destino padrão, nem a da OpenRouter pro 9router', async () => {
-    vi.stubEnv('COPILOT_OPENAI_API_KEY', 'chave-openrouter');
-    escolha.funcoes.rascunho = { baseUrl: 'http://9r.test/v1', chave: 'chave-9r', modelo: 'leve' };
-
-    const p = await provider();
-
-    expect(p?.destinoFor('resumir').apiKey).toBe('chave-openrouter');
-    expect(p?.destinoFor('rascunhar').apiKey).toBe('chave-9r');
+    expect(temDestino(p!, 'resumir')).toBe(true);
+    expect(temDestino(p!, 'rascunhar')).toBe(false);
+    expect(() => p!.destinoFor('rascunhar')).toThrow(/Modelos de IA.*rascunhar/);
   });
 });
 
@@ -108,5 +86,24 @@ describe('streamCopilot', () => {
     expect(body.model).toBe('leve');
     // O campo de fallback de modelos é só da OpenRouter.
     expect(body.models).toBeUndefined();
+  });
+
+  it('conteúdo em partes (combo do 9router): só o texto sai, o raciocínio fica de fora', async () => {
+    escolha.funcoes.copiloto = { baseUrl: 'http://9r.test/v1', chave: 'chave-9r', modelo: 'leve' };
+    const partes = (c: unknown) => `data: ${JSON.stringify({ choices: [{ delta: { content: c } }] })}\n\n`;
+    const sse =
+      partes([{ type: 'thinking', thinking: [{ type: 'text', text: 'pensando' }], closed: true }]) +
+      partes([{ type: 'thinking', thinking: [{ type: 'text', text: '.' }], closed: true }, { type: 'text', text: '-' }]) +
+      partes(' Carina enviou o PDF.') +
+      'data: [DONE]\n\n';
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(sse, { status: 200 })));
+
+    const { resolveProvider, streamCopilot } = await import('./llm');
+    const p = await resolveProvider();
+    const deltas: unknown[] = [];
+    for await (const d of streamCopilot(p!, { prompt: prompt('resuma'), action: 'resumir', maxTokens: 10 })) deltas.push(d);
+
+    expect(deltas.every((d) => typeof d === 'string')).toBe(true);
+    expect(deltas.join('')).toBe('- Carina enviou o PDF.');
   });
 });

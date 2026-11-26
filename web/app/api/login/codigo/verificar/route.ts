@@ -50,5 +50,6 @@ export async function POST(req: Request) {
     NextResponse.json({ ok: true, destino: caminhoInterno(corpo?.next) }),
     novaSessao(cred.user, "dono", 0),
     chave,
+    req,
   );
 }

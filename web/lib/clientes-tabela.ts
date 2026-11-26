@@ -33,6 +33,8 @@ export interface LinhaCliente {
   entregas30d: number;
   entregasTotal: number;
   contrato: Contrato;
+  /** Orçamentos enviados: no autocenter, quem recebeu orçamento é cliente. */
+  orcamentos?: number;
 }
 
 /** Dias desde a época, contados na meia-noite de Brasília. */
@@ -145,8 +147,10 @@ export function formatarReais(v: number | null): string | null {
  * Cliente de trabalho: tem contrato ou entrega registrada, ou é grupo, ou é conversa
  * direta com etiqueta de empresa. Marcado só como "Pessoal" fica de fora.
  */
-export function ehTrabalho(l: Pick<LinhaCliente, 'tipo' | 'etiquetas' | 'contrato' | 'entregasTotal'>): boolean {
-  if (l.contrato.estado !== 'sem' || l.entregasTotal > 0) return true;
+export function ehTrabalho(
+  l: Pick<LinhaCliente, 'tipo' | 'etiquetas' | 'contrato' | 'entregasTotal' | 'orcamentos'>,
+): boolean {
+  if (l.contrato.estado !== 'sem' || l.entregasTotal > 0 || (l.orcamentos ?? 0) > 0) return true;
   const empresas = l.etiquetas.filter((e) => e !== 'Pessoal');
   if (l.etiquetas.includes('Pessoal') && empresas.length === 0) return false;
   return l.tipo === 'grupo' || empresas.length > 0;
@@ -217,7 +221,7 @@ export function contagemDosSegmentos(linhas: LinhaCliente[], f: FiltrosClientes,
 }
 
 /** "espera" é a ordem do servidor: quem espera há mais tempo primeiro, silenciados no fim. */
-export type ChaveOrdem = 'espera' | 'uso' | 'atividade' | 'entregas' | 'ultima' | 'nome' | 'contrato';
+export type ChaveOrdem = 'espera' | 'uso' | 'atividade' | 'entregas' | 'ultima' | 'nome' | 'contrato' | 'orcamento';
 
 export interface Ordem {
   chave: ChaveOrdem;
@@ -240,6 +244,8 @@ function valorDaOrdem(l: LinhaCliente, chave: ChaveOrdem): number | null {
     }
     case 'contrato':
       return l.contrato.valorMensal;
+    case 'orcamento':
+      return l.orcamentos ?? 0;
     default:
       return null;
   }

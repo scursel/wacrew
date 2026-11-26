@@ -4,18 +4,22 @@ import { type ReactNode, useCallback, useEffect, useRef, useState } from "react"
 import { type MidiaResumo, type PainelCliente as Dados, type Tom, quandoCurto } from "@/lib/caixa";
 import { instanteLongo } from "@/lib/formatar-data";
 import { ContextoCard } from "../ContextoCard";
+import { BotaoOrcamento } from "../BotaoOrcamento";
 import { ContratoForm } from "../ContratoForm";
+import { ResumoConversa } from "../ResumoConversa";
 import { CopilotPanel } from "../CopilotPanel";
 import { EstadoNotas, NotesPanel, useNotas } from "../NotesPanel";
 import { useRotas } from "../RotasPainel";
 import type { ContatoCrm } from "@/lib/contatos-crm";
 import { Avatar, Button, Field, IconButton, Input, MedidorUso, Pares, Textarea, cn, Icone } from "../ui";
 
-type IdSecao = "contato" | "contrato" | "pessoas" | "notas" | "copiloto" | "midia";
+type IdSecao = "resumo" | "contato" | "orcamento" | "contrato" | "pessoas" | "notas" | "copiloto" | "midia";
 
 const CHAVE_SECOES = "wac-painel-secoes";
 const ABERTAS_PADRAO: Record<IdSecao, boolean> = {
+  resumo: true,
   contato: true,
+  orcamento: true,
   contrato: true,
   pessoas: true,
   notas: true,
@@ -204,8 +208,20 @@ export function PainelCliente({
       <ContextoCard dados={dados} onEtiquetas={onSalvo} />
 
       {dono && (
+        <Secao id="resumo" titulo="Resumo" aberta={abertas.resumo} onAlternar={alternar}>
+          <ResumoConversa slug={dados.slug} />
+        </Secao>
+      )}
+
+      {dono && (
         <Secao id="contato" titulo="Ficha CRM" aberta={abertas.contato} onAlternar={alternar}>
           <FichaCrm slug={dados.slug} nome={dados.nome} />
+        </Secao>
+      )}
+
+      {dono && (
+        <Secao id="orcamento" titulo="Orçamento" aberta={abertas.orcamento} onAlternar={alternar}>
+          <BotaoOrcamento slug={dados.slug} aoMudar={onSalvo} />
         </Secao>
       )}
 

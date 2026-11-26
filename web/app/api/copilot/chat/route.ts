@@ -7,7 +7,7 @@ import {
   type CopilotAction,
   isCopilotEnabled,
 } from "@/lib/copilot";
-import { resolveProvider, streamCopilot } from "@/lib/llm";
+import { resolveProvider, streamCopilot, temDestino } from "@/lib/llm";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -60,6 +60,7 @@ export async function POST(req: Request) {
   if (!provider) {
     return NextResponse.json({ error: "no_provider" }, { status: 503 });
   }
+  if (!temDestino(provider, action)) return NextResponse.json({ error: "no_provider" }, { status: 503 });
 
   const { groupMemory, sharedMemory, messages } = await buildContext(slug);
   const prompt = buildPrompt({ groupMemory, sharedMemory, messages, action, chat });

@@ -23,14 +23,17 @@ afterEach(async () => {
 describe('resolverIA', () => {
   const padrao = { baseUrl: 'https://openrouter.ai/api/v1', chave: 'chave-openrouter', modelo: 'google/gemini-3.8-flash' };
 
-  it('sem escolha na tela → padrão, byte a byte', async () => {
+  // Nunca vaza para o provedor do ambiente (OpenRouter): sem escolha na tela, a função fica desligada.
+  const desligado = { via: 'padrao', ...padrao, chave: '' };
+
+  it('sem escolha na tela → desligado, sem a chave do ambiente', async () => {
     await cfg.salvarConfigIA({ chave: 'chave-9router' });
-    expect(await mod.resolverIA('postura', padrao)).toEqual({ via: 'padrao', ...padrao });
+    expect(await mod.resolverIA('postura', padrao)).toEqual(desligado);
   });
 
-  it('com escolha mas sem chave salva → padrão (a chave do 9router não vai pra OpenRouter)', async () => {
+  it('com escolha mas sem chave salva → desligado', async () => {
     await cfg.salvarConfigIA({ funcoes: { postura: 'forte' } });
-    expect(await mod.resolverIA('postura', padrao)).toEqual({ via: 'padrao', ...padrao });
+    expect(await mod.resolverIA('postura', padrao)).toEqual(desligado);
   });
 
   it('com os dois → 9router com a chave e o modelo da tela (Review Focus 1)', async () => {
@@ -41,14 +44,14 @@ describe('resolverIA', () => {
       chave: 'chave-9r',
       modelo: 'forte',
     });
-    // A outra função continua no padrão, com a chave do outro provedor.
-    expect(await mod.resolverIA('copiloto', padrao)).toEqual({ via: 'padrao', ...padrao });
+    // A outra função, sem escolha, fica desligada.
+    expect(await mod.resolverIA('copiloto', padrao)).toEqual(desligado);
   });
 
-  it('config ilegível não lança: cai no padrão', async () => {
+  it('config ilegível não lança: fica desligado', async () => {
     await cfg.salvarConfigIA({ chave: 'chave-9r', funcoes: { postura: 'forte' } });
     await writeFile(join(tmp, '.ia', 'modelos.json'), '{quebrado', 'utf8');
-    await expect(mod.resolverIA('postura', padrao)).resolves.toEqual({ via: 'padrao', ...padrao });
+    await expect(mod.resolverIA('postura', padrao)).resolves.toEqual(desligado);
   });
 });
 

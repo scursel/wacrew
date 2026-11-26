@@ -4,9 +4,9 @@ import { writeJsonAtomic } from '../json-store';
 import { DATA_DIR } from '../paths';
 
 /** Cada IA do painel que pode ser apontada para um modelo do 9router. */
-export type FuncaoIA = 'copiloto' | 'rascunho' | 'postura' | 'departamento' | 'video' | 'transcricao';
+export type FuncaoIA = 'copiloto' | 'rascunho' | 'postura' | 'departamento' | 'video' | 'transcricao' | 'orcamento';
 
-export const FUNCOES_IA: FuncaoIA[] = ['copiloto', 'rascunho', 'postura', 'departamento', 'video', 'transcricao'];
+export const FUNCOES_IA: FuncaoIA[] = ['copiloto', 'rascunho', 'postura', 'departamento', 'video', 'transcricao', 'orcamento'];
 
 export const URL_9ROUTER_PADRAO = 'http://100.115.118.6:20128/v1';
 

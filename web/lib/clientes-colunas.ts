@@ -6,6 +6,7 @@ import type { ChaveOrdem } from './clientes-tabela';
 
 export type ColunaId =
   | 'tipo'
+  | 'orcamentos'
   | 'etiquetas'
   | 'contrato'
   | 'uso'
@@ -34,6 +35,7 @@ export interface DefColuna {
 
 export const COLUNAS: DefColuna[] = [
   { id: 'tipo', rotulo: 'Tipo', padrao: 'sempre' },
+  { id: 'orcamentos', rotulo: 'Orçamentos enviados', cabecalho: 'Orçamentos', padrao: 'sempre', ordem: 'orcamento' },
   { id: 'etiquetas', rotulo: 'Etiquetas', padrao: 'sempre' },
   { id: 'contrato', rotulo: 'Contrato', padrao: 'sempre', ordem: 'contrato' },
   { id: 'uso', rotulo: 'Uso do contrato', padrao: 'sempre', ordem: 'uso' },

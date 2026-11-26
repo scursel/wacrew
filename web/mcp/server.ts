@@ -800,7 +800,7 @@ server.registerTool(
     } catch (e) {
       const msg = e instanceof Error ? e.message : "falha ao assistir o vídeo";
       // Vídeo longo demais ou link inválido é problema do pedido, não do serviço.
-      if (/OpenRouter|OPENROUTER_API_KEY|Gemini|timeout|aborted|fetch failed/i.test(msg)) await anotarSaude("video", msg);
+      if (/OpenRouter|OPENROUTER_API_KEY|9router|IA desligada|Gemini|timeout|aborted|fetch failed/i.test(msg)) await anotarSaude("video", msg);
       return fail(msg);
     }
   },

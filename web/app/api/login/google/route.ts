@@ -5,6 +5,7 @@ import { emailsDoDono } from "@/lib/equipe/login-externo";
 import { CAMINHO_CALLBACK_LOGIN, COOKIE_DESTINO_LOGIN, COOKIE_STATE_LOGIN, urlDeLoginGoogle } from "@/lib/equipe/login-google";
 import { chaveDeSessao } from "@/lib/equipe/sessao";
 import { configOAuth, novoState, origemPublica, STATE_VALIDADE_S } from "@/lib/google/oauth";
+import { cookieSeguro } from "../sessao";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,7 +22,7 @@ export async function GET(req: Request) {
   const res = NextResponse.redirect(urlDeLoginGoogle(cfg, `${origem}${CAMINHO_CALLBACK_LOGIN}`, state));
   const opcoes = {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: cookieSeguro(req),
     sameSite: "lax" as const,
     path: "/api/login/google",
     maxAge: STATE_VALIDADE_S,

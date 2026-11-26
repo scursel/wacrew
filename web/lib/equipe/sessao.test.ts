@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assinarSessao, chaveDeSessao, lerSessao, novaSessao, VALIDADE_S } from './sessao';
+import { assinarSessao, chaveDeSessao, cookieSeguro, lerSessao, novaSessao, VALIDADE_S } from './sessao';
 
 const CHAVE = 'chave-de-teste';
 const AGORA = 1_800_000_000;
@@ -31,5 +31,22 @@ describe('sessão v2', () => {
     expect(chaveDeSessao({ PANEL_SESSION_SECRET: 's', PANEL_PASS: 'p' })).toBe('s');
     expect(chaveDeSessao({ PANEL_PASS: 'p' })).toBe('wac-sessao-v2:p');
     expect(chaveDeSessao({})).toBeNull();
+  });
+  it('cookieSeguro: só marca Secure em HTTPS (evita descartar cookie em HTTP no Tailscale/LAN)', () => {
+    const httpReq = { url: 'http://100.67.55.36:3304/api/login', headers: new Headers() };
+    expect(cookieSeguro(httpReq, { NODE_ENV: 'production', PUBLIC_URL: 'http://100.67.55.36:3304' })).toBe(false);
+    expect(cookieSeguro(httpReq, { NODE_ENV: 'production' })).toBe(false);
+
+    const viaProxyHttps = { url: 'http://localhost:3000/api/login', headers: new Headers({ 'x-forwarded-proto': 'https, http' }) };
+    expect(cookieSeguro(viaProxyHttps, { NODE_ENV: 'production' })).toBe(true);
+
+    const viaPublicHttps = { url: 'http://localhost:3000/api/login', headers: new Headers() };
+    expect(cookieSeguro(viaPublicHttps, { NODE_ENV: 'production', PUBLIC_URL: 'https://painel.exemplo.com' })).toBe(true);
+
+    const viaProxyHttp = { url: 'http://localhost:3000/api/login', headers: new Headers({ 'x-forwarded-proto': 'http' }) };
+    expect(cookieSeguro(viaProxyHttp, { NODE_ENV: 'production', PUBLIC_URL: 'https://painel.exemplo.com' })).toBe(false);
+
+    const diretoHttps = { url: 'https://painel.exemplo.com/api/login', headers: new Headers() };
+    expect(cookieSeguro(diretoHttps, { NODE_ENV: 'production' })).toBe(true);
   });
 });

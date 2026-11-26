@@ -254,8 +254,11 @@ export function preflight(req: Request): NextResponse {
 
 /** Valida slug de chat — o mesmo formato aceito pelas rotas do painel. */
 export function slugValido(slug: string): boolean {
-  return /^[A-Za-z0-9._-]{1,120}$/.test(slug);
+  // Começa com letra ou número: barra ".", ".." e afins; nomes de Object.prototype também não.
+  return /^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$/.test(slug) && !RESERVADOS.has(slug);
 }
+
+const RESERVADOS = new Set(['__proto__', 'constructor', 'prototype', 'hasOwnProperty', 'toString', 'valueOf']);
 
 /**
  * Resolve o slug de um chat no jid usado para enviar. Grupo vem do

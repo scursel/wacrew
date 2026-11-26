@@ -96,10 +96,16 @@ describe('assistirVideo', () => {
       status: 200,
     });
 
+  // Provedor escolhido na tela (simulado): chave 'k' e o modelo padrão do vídeo.
+  const escolhido = () => {
+    escolha.destino = { via: 'padrao', baseUrl: 'https://openrouter.ai/api/v1', chave: 'k', modelo: 'google/gemini-4-argon' };
+  };
+
   it('link do YouTube vai direto, sem baixar', async () => {
+    escolhido();
     const fetchFn = vi.fn().mockResolvedValue(respostaOk('00:01 elefantes'));
     const baixar = vi.fn();
-    const r = await assistirVideo({ url: 'https://youtu.be/jNQXAC9IVRw', chave: 'k', fetchFn, baixar });
+    const r = await assistirVideo({ url: 'https://youtu.be/jNQXAC9IVRw', fetchFn, baixar });
     expect(baixar).not.toHaveBeenCalled();
     const corpo = JSON.parse(fetchFn.mock.calls[0][1].body);
     expect(corpo.messages[0].content[1].video_url.url).toBe('https://youtu.be/jNQXAC9IVRw');
@@ -108,23 +114,24 @@ describe('assistirVideo', () => {
   });
 
   it('arquivo vai em base64 no corpo', async () => {
+    escolhido();
     const arquivo = join(dir, 'v.mp4');
     await writeFile(arquivo, Buffer.from('VIDEO'));
     const fetchFn = vi.fn().mockResolvedValue(respostaOk());
-    const r = await assistirVideo({ arquivo, chave: 'k', fetchFn, medirDuracao: async () => 12 });
+    const r = await assistirVideo({ arquivo, fetchFn, medirDuracao: async () => 12 });
     const url = JSON.parse(fetchFn.mock.calls[0][1].body).messages[0].content[1].video_url.url;
     expect(url).toBe(`data:video/mp4;base64,${Buffer.from('VIDEO').toString('base64')}`);
     expect(r.fonte).toBe('arquivo');
   });
 
   it('link que não é YouTube é baixado antes', async () => {
+    escolhido();
     const baixado = join(dir, 'reel.mp4');
     await writeFile(baixado, Buffer.from('REEL'));
     const fetchFn = vi.fn().mockResolvedValue(respostaOk());
     const baixar = vi.fn().mockResolvedValue(baixado);
     const r = await assistirVideo({
       url: 'https://www.instagram.com/reel/C1abc/',
-      chave: 'k',
       fetchFn,
       baixar,
       medirDuracao: async () => 30,
@@ -134,26 +141,30 @@ describe('assistirVideo', () => {
   });
 
   it('recusa vídeo acima da duração máxima, sem chamar a API', async () => {
+    escolhido();
     const arquivo = join(dir, 'longo.mp4');
     await writeFile(arquivo, Buffer.from('X'));
     const fetchFn = vi.fn();
     await expect(
-      assistirVideo({ arquivo, chave: 'k', fetchFn, medirDuracao: async () => 3600, duracaoMaxS: 1200 }),
+      assistirVideo({ arquivo, fetchFn, medirDuracao: async () => 3600, duracaoMaxS: 1200 }),
     ).rejects.toThrow(/60 min.*20 min/);
     expect(fetchFn).not.toHaveBeenCalled();
   });
 
   it('sem chave, falha com instrução clara', async () => {
-    await expect(assistirVideo({ url: 'https://youtu.be/x', chave: '' })).rejects.toThrow(/OPENROUTER_API_KEY/);
+    escolha.destino = { via: 'padrao', baseUrl: 'https://openrouter.ai/api/v1', chave: '', modelo: 'm' };
+    await expect(assistirVideo({ url: 'https://youtu.be/x' })).rejects.toThrow(/Modelos de IA/);
   });
 
   it('erro HTTP vira mensagem traduzida', async () => {
+    escolhido();
     const fetchFn = vi.fn().mockResolvedValue(new Response('{"error":{"message":"Insufficient credits"}}', { status: 402 }));
-    await expect(assistirVideo({ url: 'https://youtu.be/x', chave: 'k', fetchFn })).rejects.toThrow(/saldo/i);
+    await expect(assistirVideo({ url: 'https://youtu.be/x', fetchFn })).rejects.toThrow(/saldo/i);
   });
 
   it('exige url ou arquivo', async () => {
-    await expect(assistirVideo({ chave: 'k' })).rejects.toThrow(/url ou arquivo/);
+    escolhido();
+    await expect(assistirVideo({})).rejects.toThrow(/url ou arquivo/);
   });
 
   it('destino 9router: chama o 9router com a chave salva e o combo escolhido', async () => {

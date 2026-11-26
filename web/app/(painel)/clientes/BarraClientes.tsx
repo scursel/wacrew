@@ -20,6 +20,7 @@ const CONTRATOS: Array<{ valor: FiltroContrato; rotulo: string }> = [
 
 const ORDENS: Array<{ chave: ChaveOrdem; rotulo: string; dica?: string }> = [
   { chave: "espera", rotulo: "Maior espera", dica: "Quem espera resposta há mais tempo primeiro" },
+  { chave: "orcamento", rotulo: "Orçamentos", dica: "Quem recebeu mais orçamentos primeiro" },
   { chave: "uso", rotulo: "Uso do contrato" },
   { chave: "atividade", rotulo: "Atividade" },
   { chave: "entregas", rotulo: "Entregas" },

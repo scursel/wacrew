@@ -55,3 +55,21 @@ export function lerSessao(token: string, chave: string, agoraS = Math.floor(Date
   if (typeof s.v !== 'number' || typeof s.exp !== 'number' || s.exp < agoraS) return null;
   return { u: s.u, p: s.p, v: s.v, exp: s.exp };
 }
+
+/**
+ * Cookie `Secure` só quando o painel é servido em HTTPS: atrás de proxy
+ * (`x-forwarded-proto: https`), com `PUBLIC_URL=https://...` ou pedido direto
+ * em `https:`. Em HTTP puro (ex.: IP Tailscale local com `NODE_ENV=production`),
+ * marcar `Secure` faz o navegador descartar o cookie silenciosamente e travar o login.
+ */
+export function cookieSeguro(
+  req?: { url: string; headers: Headers },
+  env: Partial<NodeJS.ProcessEnv> = process.env,
+): boolean {
+  const proto = req?.headers.get('x-forwarded-proto')?.split(',')[0]?.trim().toLowerCase();
+  if (proto) return proto === 'https';
+  const pub = env.PUBLIC_URL?.trim().toLowerCase();
+  if (pub) return pub.startsWith('https://');
+  if (req) return req.url.startsWith('https:');
+  return env.NODE_ENV === 'production';
+}

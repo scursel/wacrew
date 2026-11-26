@@ -64,26 +64,37 @@ describe("avaliarPostura", () => {
   const historico = [l("eu", "subi os 3 no painel"), l("cliente", "ENTENDEU sobre os planos ?")];
 
   it("devolve os hits do modelo", async () => {
+    escolha.destino = { via: "9router", baseUrl: "http://9r.test/v1", chave: "x", modelo: "leve" };
     const r = await avaliarPostura({
       historico,
       baloes: ["entendi sim, já tirei"],
-      chave: "x",
       fetchFn: respostaOpenRouter({ entendimento: { falhou: true, trecho: "ENTENDEU", sugestao: "diz o que entendeu" } }),
     });
     expect(r.avaliado).toBe(true);
     expect(r.hits.map((h) => h.regra)).toEqual(["entendimento"]);
   });
-  it("falha da OpenRouter não segura o envio", async () => {
-    const r = await avaliarPostura({ historico, baloes: ["entendi sim"], chave: "x", fetchFn: (async () => new Response("sem saldo", { status: 402 })) as unknown as typeof fetch });
+  it("falha do provedor não segura o envio", async () => {
+    escolha.destino = { via: "9router", baseUrl: "http://9r.test/v1", chave: "x", modelo: "leve" };
+    const r = await avaliarPostura({ historico, baloes: ["entendi sim"], fetchFn: (async () => new Response("sem saldo", { status: 402 })) as unknown as typeof fetch });
     expect(r).toMatchObject({ hits: [], avaliado: false });
     expect(r.erro).toContain("402");
   });
-  it("sem chave não chama nada", async () => {
-    const antes = process.env.OPENROUTER_API_KEY;
-    delete process.env.OPENROUTER_API_KEY;
-    const r = await avaliarPostura({ historico, baloes: ["entendi sim"], chave: "" });
-    if (antes !== undefined) process.env.OPENROUTER_API_KEY = antes;
+  it("sem modelo escolhido na tela não chama nada", async () => {
+    escolha.destino = { via: "padrao", baseUrl: "https://openrouter.ai/api/v1", chave: "", modelo: "m" };
+    const fetchMock = fetchMockado(async () => new Response("{}"));
+    const r = await avaliarPostura({ historico, baloes: ["entendi sim"], fetchFn: fetchMock });
     expect(r.avaliado).toBe(false);
+    expect(r.erro).toMatch(/Modelos de IA/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("conteúdo em partes (thinking + text) é lido", async () => {
+    escolha.destino = { via: "9router", baseUrl: "http://9r.test/v1", chave: "x", modelo: "leve" };
+    const partes = [{ type: "thinking", thinking: [{ type: "text", text: "hmm" }] }, { type: "text", text: JSON.stringify({ entendimento: { falhou: true, trecho: "x", sugestao: "y" } }) }];
+    const fetchMock = fetchMockado(async () => new Response(JSON.stringify({ choices: [{ message: { content: partes } }] }), { status: 200 }));
+    const r = await avaliarPostura({ historico, baloes: ["entendi sim"], fetchFn: fetchMock });
+    expect(r.avaliado).toBe(true);
+    expect(r.hits.map((h) => h.regra)).toEqual(["entendimento"]);
   });
 
   it("destino 9router: chama o 9router com a chave salva e o combo escolhido", async () => {
@@ -109,14 +120,14 @@ describe("avaliarPostura", () => {
     expect(r.erro).not.toMatch(/OpenRouter/);
   });
 
-  it("opções explícitas (chave/modelo) continuam valendo acima do 9router", async () => {
+  it("modelo explícito troca só o modelo, nunca o provedor", async () => {
     escolha.destino = { via: "9router", baseUrl: "http://9r.test/v1", chave: "chave-9r", modelo: "leve" };
     const fetchMock = fetchMockado(async () => new Response(JSON.stringify({ choices: [{ message: { content: "{}" } }] }), { status: 200 }));
 
-    await avaliarPostura({ historico, baloes: ["entendi sim"], chave: "chave-explicita", modelo: "modelo-x", fetchFn: fetchMock });
+    await avaliarPostura({ historico, baloes: ["entendi sim"], modelo: "modelo-x", fetchFn: fetchMock });
 
-    expect(fetchMock.mock.calls[0][0]).toBe("https://openrouter.ai/api/v1/chat/completions");
-    expect(fetchMock.mock.calls[0][1]?.headers).toMatchObject({ Authorization: "Bearer chave-explicita" });
+    expect(fetchMock.mock.calls[0][0]).toBe("http://9r.test/v1/chat/completions");
+    expect(fetchMock.mock.calls[0][1]?.headers).toMatchObject({ Authorization: "Bearer chave-9r" });
     expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body)).model).toBe("modelo-x");
   });
 });

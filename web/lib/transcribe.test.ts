@@ -86,18 +86,14 @@ describe('transcrição na nuvem', () => {
     expect(await arquivo.text()).toBe('OGG-DO-WHATSAPP');
   });
 
-  it('padrão continua JSON com input_audio (Review Focus 4)', async () => {
+  it('sem modelo na tela fica desligada mesmo com OPENROUTER_API_KEY no ambiente', async () => {
     vi.stubEnv('OPENROUTER_API_KEY', 'chave-openrouter');
     const rel = await audioEmDisco();
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ text: 'ok' }), { status: 200 }));
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
     const { transcribe } = await import('./transcribe');
 
-    await transcribe('g', rel);
-
-    expect(fetchSpy.mock.calls[0][0]).toBe('https://openrouter.ai/api/v1/audio/transcriptions');
-    const corpo = JSON.parse(String(fetchSpy.mock.calls[0][1]?.body));
-    expect(corpo.input_audio).toEqual({ data: Buffer.from('OGG-DO-WHATSAPP').toString('base64'), format: 'ogg' });
-    expect(corpo.model).toBe('elevenlabs/scribe-v2');
+    await expect(transcribe('g', rel)).rejects.toThrow(/Modelos de IA/);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });
 

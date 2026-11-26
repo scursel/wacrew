@@ -141,6 +141,7 @@ describe("validação", () => {
   it("slugValido aceita slug real e recusa travessia", () => {
     expect(api.slugValido("acme-parceria")).toBe(true);
     expect(api.slugValido("dm-000000000000")).toBe(true);
+    for (const ruim of [".", "..", "__proto__", "constructor", "-x"]) expect(api.slugValido(ruim)).toBe(false);
     expect(api.slugValido("../../etc/passwd")).toBe(false);
     expect(api.slugValido("com espaço")).toBe(false);
     expect(api.slugValido("")).toBe(false);

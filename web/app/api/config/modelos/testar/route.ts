@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { AVISO_SEM_MODELO } from "@/lib/ia/aviso";
 import { type FuncaoIA, FUNCOES_IA, lerConfigIA } from "@/lib/ia/config";
 import { listarModelos9router } from "@/lib/ia/provedor";
+import { semChave } from "@/lib/ia/texto";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,11 +11,6 @@ interface TestePost {
   funcao?: unknown;
   baseUrl?: unknown;
   chave?: unknown;
-}
-
-/** Erro nunca devolve a chave do operador. */
-function semChave(msg: string, chave: string): string {
-  return chave ? msg.split(chave).join("••••") : msg;
 }
 
 /**
@@ -57,7 +54,7 @@ export async function POST(req: Request) {
   }
 
   const modelo = salva.funcoes[funcao];
-  if (!modelo) return NextResponse.json({ ok: true, ms: ms() });
+  if (!modelo) return NextResponse.json({ ok: false, ms: ms(), erro: AVISO_SEM_MODELO });
 
   // Transcrição: só confere se o modelo existe na lista de fala (não manda áudio).
   if (funcao === "transcricao") {

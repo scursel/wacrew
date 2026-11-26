@@ -132,8 +132,9 @@ no máximo ~6% das mensagens que ele mesmo escreveu.
   `revisar_texto` revisa sem enviar (útil no modo `confirmar`).
 - **`revisao: 'ignorar'`** pula só o score, nunca bloqueios, e só quando o operador aprovou o
   texto exatamente assim. Também pula a postura.
-- **Postura (`web/lib/estilo/postura.ts`):** além das regras fixas, um modelo barato (Gemini Flash
-  pela OpenRouter, troca com `WAC_POSTURA_MODEL`) lê as últimas 60 mensagens e o rascunho e recusa
+- **Postura (`web/lib/estilo/postura.ts`):** além das regras fixas, o modelo escolhido em
+  **Configurações › Modelos de IA** (9router; sem escolha, fica desligada — nunca cai na OpenRouter)
+  lê as últimas 60 mensagens e o rascunho e recusa
   quatro coisas que dependem do histórico: `entendimento` (o cliente foi ambíguo ou cobrou
   "entendeu?" e o rascunho age ou diz "entendi" sem dizer o quê), `concordancia` (só concede a uma
   ideia nova, sem custo, prazo ou pergunta), `conserto` (anuncia como resolvido um problema que
@@ -207,8 +208,9 @@ tool de mídia normalmente, ela busca da nuvem. Só num setup 100% local (sem `W
 
 ## Vídeo: `assistir_video` (MCP) e a skill `watch`
 
-**`assistir_video`** (MCP, `web/lib/assistir-video.ts`): o Gemini (`google/gemini-4-argon` pela
-OpenRouter, troca com `WAC_VIDEO_MODEL`) assiste imagem e áudio juntos e devolve o que aparece e o que
+**`assistir_video`** (MCP, `web/lib/assistir-video.ts`): usa o modelo escolhido em
+**Configurações › Modelos de IA** (9router; sem escolha, fica desligada — nunca cai na OpenRouter)
+para assistir imagem e áudio juntos e devolver o que aparece e o que
 é falado, com tempos. Serve pro vídeo **anexado** no chat (`grupo` + `id`/`mediaPath`, ou o último do
 grupo) e pra **link** (`url`: YouTube direto; Instagram/TikTok baixados com `yt-dlp`). ~US$ 0,03–0,05
 por vídeo de 1 min, teto de 20 min, comprimido até ~18 MB: chame sob demanda, nunca em lote. `ver_video`

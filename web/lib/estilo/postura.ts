@@ -18,7 +18,9 @@
 import type { Contacts } from "../contacts";
 import { numberFromJid, roleOf } from "../contacts";
 import type { MessageView } from "../data";
+import { AVISO_SEM_MODELO } from "../ia/aviso";
 import { resolverIA } from "../ia/provedor";
+import { semChave, textoDoDelta } from "../ia/texto";
 import type { Hit } from "./repeticao";
 
 export type RegraPostura = "entendimento" | "concordancia" | "conserto" | "cobranca";
@@ -41,7 +43,7 @@ export interface ResultadoPostura {
 export interface OpcoesPostura {
   historico: LinhaHistorico[];
   baloes?: string[];
-  chave?: string;
+  /** Troca só o modelo; o provedor e a chave são sempre os da tela de IA. */
   modelo?: string;
   fetchFn?: typeof fetch;
   timeoutMs?: number;
@@ -174,23 +176,19 @@ export async function avaliarPostura(o: OpcoesPostura): Promise<ResultadoPostura
   const vazio = { hits: [], alertas: [] };
   const baloes = o.baloes?.map((b) => b.trim()).filter(Boolean);
   if (!o.historico.length || !precisaAvaliar(o.historico, baloes)) return { ...vazio, avaliado: false };
-  const destino = await resolverIA("postura", {
-    baseUrl: BASE_OPENROUTER,
-    chave: (process.env.OPENROUTER_API_KEY ?? "").trim(),
-    modelo: process.env.WAC_POSTURA_MODEL ?? MODELO_PADRAO,
-  });
-  // Chave explícita mantém o contrato antigo: OpenRouter, com essa chave.
-  const via = o.chave !== undefined ? "padrao" : destino.via;
-  const chave = (o.chave ?? destino.chave).trim();
+  // Só o modelo escolhido na tela de IA: sem escolha, a chave vem vazia e nada sai.
+  const destino = await resolverIA("postura", { baseUrl: BASE_OPENROUTER, chave: "", modelo: MODELO_PADRAO });
+  const via = destino.via;
+  const chave = destino.chave.trim();
   if (!chave) {
     return {
       ...vazio,
       avaliado: false,
-      erro: via === "9router" ? "9router sem chave: postura não avaliada" : "OPENROUTER_API_KEY ausente: postura não avaliada",
+      erro: via === "9router" ? "9router sem chave: postura não avaliada" : `${AVISO_SEM_MODELO} (postura)`,
     };
   }
-  const modelo = o.modelo ?? (via === "9router" ? destino.modelo : process.env.WAC_POSTURA_MODEL ?? MODELO_PADRAO);
-  const endpoint = via === "9router" ? `${destino.baseUrl}/chat/completions` : `${BASE_OPENROUTER}/chat/completions`;
+  const modelo = o.modelo ?? destino.modelo;
+  const endpoint = `${destino.baseUrl}/chat/completions`;
   const nome = via === "9router" ? "9router" : "OpenRouter";
   try {
     const res = await (o.fetchFn ?? fetch)(endpoint, {
@@ -200,11 +198,11 @@ export async function avaliarPostura(o: OpcoesPostura): Promise<ResultadoPostura
       signal: AbortSignal.timeout(o.timeoutMs ?? 40_000),
     });
     const corpo = await res.text();
-    if (!res.ok) return { ...vazio, avaliado: false, erro: `${nome} HTTP ${res.status}: ${corpo.slice(0, 160)}` };
-    const conteudo = JSON.parse(corpo)?.choices?.[0]?.message?.content ?? "";
-    const json = JSON.parse(String(conteudo).replace(/^```(?:json)?\s*|\s*```$/g, ""));
+    if (!res.ok) return { ...vazio, avaliado: false, erro: semChave(`${nome} HTTP ${res.status}: ${corpo.slice(0, 160)}`, chave) };
+    const conteudo = textoDoDelta(JSON.parse(corpo)?.choices?.[0]?.message?.content);
+    const json = JSON.parse(conteudo.replace(/^```(?:json)?\s*|\s*```$/g, ""));
     return { ...lerVeredito(json, Boolean(baloes?.length)), avaliado: true };
   } catch (err) {
-    return { ...vazio, avaliado: false, erro: `postura não avaliada: ${err instanceof Error ? err.message : String(err)}` };
+    return { ...vazio, avaliado: false, erro: semChave(`postura não avaliada: ${err instanceof Error ? err.message : String(err)}`, chave) };
   }
 }

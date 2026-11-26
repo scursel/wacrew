@@ -7,7 +7,7 @@ import {
   isCopilotEnabled,
 } from "@/lib/copilot";
 import { readGroupMessages } from "@/lib/data";
-import { resolveProvider, streamCopilot } from "@/lib/llm";
+import { resolveProvider, streamCopilot, temDestino } from "@/lib/llm";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -99,6 +99,7 @@ export async function POST(req: Request) {
     }
   }
   const action = isFollowup ? "followup" : "sugerir";
+  if (!temDestino(provider, action)) return NextResponse.json({ error: "no_provider" }, { status: 503 });
 
   const { groupMemory, sharedMemory, messages } = await buildContext(slug);
 

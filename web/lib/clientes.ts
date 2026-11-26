@@ -6,6 +6,9 @@ import { type GroupSummary, listGroups, readGroupRecords } from './data';
 import { lerUsuarios } from './equipe/usuarios';
 import { type Feature, listarFeatures } from './features';
 import { type GroupVerdict, evaluateGroup } from './inbox';
+import { type CandidatoVisao, JANELA_MS, dispararClassificacao } from './orcamento-visao';
+import { fundirMensagens, slugsIrmaosDeDm } from './dm-irmaos';
+import { lerOrcamentos, precisaVisao, resumirOrcamentos } from './orcamentos';
 import { type SlaBand, type SlaInfo, aguardandoValido, buildSlaInfo, relativeLabel } from './sla';
 import { readTriage } from './triage';
 
@@ -36,6 +39,9 @@ export interface ClienteCard {
   band: SlaBand | null;
   /** Rótulo do tempo de espera ("há 26h") quando aguardando. */
   waitingLabel: string | null;
+  /** Orçamentos que a conta mandou (texto, PDF, foto lida pela IA ou marcação manual). */
+  orcamentos: number;
+  ultimoOrcamento: string | null;
 }
 
 /** O que a tabela de clientes mostra além da conversa: atividade, contrato, entregas e equipe. */
@@ -177,14 +183,17 @@ export function negocioDoChat(
 /** Monta os cards de todos os chats monitorados, já ordenados para a grade. */
 export async function buildClientes(): Promise<ClienteLinha[]> {
   const now = Date.now();
-  const [groups, contacts, triage, contratos, features, equipe] = await Promise.all([
+  const [groups, contacts, triage, contratos, features, equipe, orcStore] = await Promise.all([
     listGroups(),
     buildContacts(),
     readTriage(),
     readContratos(),
     listarFeatures(),
     lerUsuarios(),
+    lerOrcamentos(),
   ]);
+  const paraVisao: Array<CandidatoVisao & { ts: string }> = [];
+  const existentes = new Set(groups.map((g) => g.slug));
 
   const cards = await Promise.all(
     groups.map(async (g: GroupSummary): Promise<ClienteLinha> => {
@@ -198,6 +207,19 @@ export async function buildClientes(): Promise<ClienteLinha[]> {
         papel: roleOf(contacts, numberFromJid(m.sender ?? '')),
       }));
       const ultimaTimestamp = g.lastTimestamp;
+      // DM partido (telefone e LID): os orçamentos das duas pontas contam juntos.
+      const irmaos = slugsIrmaosDeDm(g.slug, contacts, existentes);
+      const msgsOrc = irmaos.length > 1 ? fundirMensagens(await Promise.all(irmaos.map((s) => readGroupRecords(s)))) : messages;
+      const orc = resumirOrcamentos(irmaos, msgsOrc, orcStore);
+      const etiquetas = triage.etiquetas[g.slug] ?? [];
+      // Foto enviada em chat pessoal não vai para a IA.
+      if (!(etiquetas.includes('Pessoal') && etiquetas.length === 1)) {
+        for (const m of messages) {
+          if (precisaVisao(m) && !orcStore.visao[m.id] && now - Date.parse(m.timestamp) < JANELA_MS) {
+            paraVisao.push({ id: m.id, mediaPath: m.mediaPath, ts: m.timestamp });
+          }
+        }
+      }
 
       return {
         slug: g.slug,
@@ -214,16 +236,21 @@ export async function buildClientes(): Promise<ClienteLinha[]> {
           g.lastActivity != null &&
           g.lastActivity * 1000 - (ultimaTimestamp ? new Date(ultimaTimestamp).getTime() : 0) >
             5 * 60_000,
-        etiquetas: triage.etiquetas[g.slug] ?? [],
+        etiquetas,
         silenciado: Boolean(triage.muted[g.slug]),
         aguardando,
         waitingMs: sla?.waitingMs ?? 0,
         band: sla?.band ?? null,
         waitingLabel: sla?.label ?? null,
+        orcamentos: orc.total,
+        ultimoOrcamento: orc.ultimo,
         ...negocioDoChat({ slug: g.slug, nome: g.name, mensagens: comPapel }, contratos, features, equipe, now),
       };
     }),
   );
 
+  // Mais recentes primeiro: o que acabou de sair entra na lista antes do histórico.
+  paraVisao.sort((a, b) => b.ts.localeCompare(a.ts));
+  dispararClassificacao(paraVisao);
   return ordenarCards(cards);
 }
