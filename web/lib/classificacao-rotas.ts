@@ -86,6 +86,7 @@ export const CLASSIFICACAO: Record<string, 'dono' | 'atendimento' | 'publico'> =
   'api/google/desconectar/route.ts': 'dono',
   'api/groups/route.ts': 'dono',
   'api/groups/summary/route.ts': 'dono',
+  'api/history/route.ts': 'dono',
   'api/inboxes/route.ts': 'dono',
   'api/kanban/route.ts': 'dono',
   'api/links/route.ts': 'dono',

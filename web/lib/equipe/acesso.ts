@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers';
 import { cache } from 'react';
 import type { Contacts } from '../contacts';
-import { slugsIrmaosDeDm } from '../dm-irmaos';
+import { slugCanonicoDm, slugsIrmaosDeDm } from '../dm-irmaos';
 import { credenciaisDoDono } from './autenticar';
 import { lerAtribuicoes } from './atribuicoes';
 import { departamentosDe, lerDepartamentos } from './departamentos';
@@ -43,18 +43,7 @@ export function irmaosPermitidos(
   return out.includes(slug) ? out : [slug, ...out];
 }
 
-/**
- * Slug que representa a conversa entre irmãos de DM: o do telefone (não é
- * LID conhecido e não aponta pra outro número), senão o menor — o mesmo
- * resultado em qualquer ordem.
- */
-export function slugCanonico(irmaos: string[], c: Contacts): string {
-  for (const s of irmaos) {
-    const id = /^dm-(\d+)$/.exec(s)?.[1];
-    if (id && !c.lids.has(id) && (c.phones.get(id) ?? id) === id) return s;
-  }
-  return [...irmaos].sort()[0] ?? '';
-}
+export const slugCanonico = slugCanonicoDm;
 
 /** Atendente vê todas as conversas existentes; `Usuario.chats` fica no arquivo, sem leitura. */
 export async function atendentePeloToken(token: string | undefined): Promise<Atendente | null> {

@@ -11,6 +11,7 @@ type Priv = {
   sock: unknown;
   handleRevoke(jid: string, targetId: string, key: { participant?: string | null }): void;
   captureSenderFromMessage(wa: unknown): void;
+  canonicalSlug(jid: string, alt?: string): string;
 };
 
 async function makeGateway() {
@@ -18,7 +19,9 @@ async function makeGateway() {
   await mkdir(join(base, 'auth'));
   await mkdir(join(base, 'data'));
   const gw = new BaileysGateway(join(base, 'auth'), join(base, 'data'));
-  (gw as unknown as Priv).sock = { user: { id: '5511888888888:2@s.whatsapp.net' } };
+  (gw as unknown as Priv).sock = {
+    user: { id: '5511888888888:2@s.whatsapp.net' },
+  };
   return gw;
 }
 
@@ -48,4 +51,18 @@ describe('DM com participant vazio no gateway', () => {
     });
     expect(gw.phoneOfContact('111122223333444')).toBe('5511999999999');
   });
+});
+
+it('canonicaliza DM por alternativa e por contato aprendido em mensagem própria', async () => {
+  const gw = await makeGateway();
+  const priv = gw as unknown as Priv;
+  const lid = '111122223333444@lid';
+  const phone = '5511999999999@s.whatsapp.net';
+  expect(priv.canonicalSlug(lid, phone)).toBe('dm-5511999999999');
+  priv.captureSenderFromMessage({
+    key: { remoteJid: lid, remoteJidAlt: phone, fromMe: true },
+    pushName: 'Operador',
+  });
+  expect(gw.phoneOfContact('111122223333444')).toBe('5511999999999');
+  expect(priv.canonicalSlug(lid)).toBe('dm-5511999999999');
 });

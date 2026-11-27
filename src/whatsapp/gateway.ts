@@ -101,7 +101,11 @@ interface ReceiptState {
 }
 
 /** Ordem dos status para "o mais avançado vence". */
-const STATUS_RANK: Record<ReceiptStatus, number> = { sent: 0, delivered: 1, read: 2 };
+const STATUS_RANK: Record<ReceiptStatus, number> = {
+  sent: 0,
+  delivered: 1,
+  read: 2,
+};
 
 /** Teto de receipts em memória (serviço 24/7) — evita crescimento ilimitado. */
 const MAX_RECEIPTS = 1000;
@@ -151,11 +155,19 @@ function toMessageContent(media: OutboundMedia): AnyMessageContent {
         caption: media.caption,
       };
     case 'audio':
-      return { audio: { url: media.path }, ptt: true, mimetype: 'audio/ogg; codecs=opus' };
+      return {
+        audio: { url: media.path },
+        ptt: true,
+        mimetype: 'audio/ogg; codecs=opus',
+      };
     case 'video':
       return { video: { url: media.path }, caption: media.caption };
     case 'gif':
-      return { video: { url: media.path }, gifPlayback: true, caption: media.caption };
+      return {
+        video: { url: media.path },
+        gifPlayback: true,
+        caption: media.caption,
+      };
   }
 }
 
@@ -301,7 +313,9 @@ export class BaileysGateway implements WhatsAppGateway {
   async updateProfilePicture(path: string): Promise<void> {
     if (!this.sock) throw new Error('Coletor não está conectado ao WhatsApp.');
     // Baileys aceita `{ url }` (lê do disco) igual ao envio de mídia.
-    await this.sock.updateProfilePicture(this.sock.user?.id ?? '', { url: path });
+    await this.sock.updateProfilePicture(this.sock.user?.id ?? '', {
+      url: path,
+    });
   }
 
   async start(): Promise<void> {
@@ -420,7 +434,9 @@ export class BaileysGateway implements WhatsAppGateway {
       participant: key.participant,
       fromMe: key.fromMe ?? false,
     };
-    await this.sock.sendMessage(jid, { react: { text: emoji, key: targetKey } });
+    await this.sock.sendMessage(jid, {
+      react: { text: emoji, key: targetKey },
+    });
     this.echoReaction(jid, targetKey, emoji);
   }
 
@@ -601,7 +617,11 @@ export class BaileysGateway implements WhatsAppGateway {
       },
       groupName,
     );
-    if (mapped) this.emitter.emit('reaction', mapped);
+    if (mapped)
+      this.emitter.emit('reaction', {
+        ...mapped,
+        conversationSlug: this.canonicalSlug(jid),
+      });
   }
 
   /**
@@ -635,7 +655,13 @@ export class BaileysGateway implements WhatsAppGateway {
     const groupName = this.groups.get(jid) ?? jid;
     const mapped = mapMessage(sent, this.sock, groupName);
     // Só aqui se sabe que o envio foi deste processo — marca antes do dedup/emissão.
-    if (mapped) this.emitMessageDeduped({ ...mapped, origem: 'coletor', ...(meta ?? {}) });
+    if (mapped)
+      this.emitMessageDeduped({
+        ...mapped,
+        conversationSlug: this.canonicalSlug(jid),
+        origem: 'coletor',
+        ...(meta ?? {}),
+      });
   }
 
   /**
@@ -701,6 +727,7 @@ export class BaileysGateway implements WhatsAppGateway {
         auth: state,
         logger: baileysLogger,
         markOnlineOnConnect: false,
+        syncFullHistory: true,
         // Reenvio pedido pelo destinatário: o Baileys recriptografa o original.
         getMessage: async (key) => this.mensagemEnviada(key),
       });
@@ -777,7 +804,7 @@ export class BaileysGateway implements WhatsAppGateway {
           const slug = this.groups.has(id)
             ? this.slugFromJid(id)
             : isDirectJid(id)
-              ? resolveConversation(id, id, null).conversationSlug
+              ? this.canonicalSlug(id)
               : this.slugFromJid(id);
           this.chatStates.delete(slug);
         }
@@ -799,6 +826,16 @@ export class BaileysGateway implements WhatsAppGateway {
    * Deriva o conversationSlug de um JID de grupo usando o nome conhecido (subject).
    * Para grupos sem nome em memória, slug do próprio jid como fallback.
    */
+  private canonicalSlug(jid: string, alt?: string | null): string {
+    if (jid.endsWith('@lid')) {
+      const phone = alt?.endsWith('@s.whatsapp.net')
+        ? alt.split('@')[0]?.split(':')[0]
+        : this.contacts.phoneOf(jid.split('@')[0] ?? '');
+      if (phone) return `dm-${phone}`;
+    }
+    return resolveConversation(jid, this.groups.get(jid) ?? jid, null).conversationSlug;
+  }
+
   private slugFromJid(jid: string): string {
     const name = this.groups.get(jid);
     if (name) {
@@ -832,9 +869,7 @@ export class BaileysGateway implements WhatsAppGateway {
   ): void {
     if (!jid) return;
 
-    const slug = isDirectJid(jid)
-      ? resolveConversation(jid, jid, null).conversationSlug
-      : this.slugFromJid(jid);
+    const slug = isDirectJid(jid) ? this.canonicalSlug(jid) : this.slugFromJid(jid);
 
     const nowSec = Math.floor(Date.now() / 1000);
     const pinnedTs = typeof chat.pinned === 'number' ? chat.pinned : null;
@@ -920,14 +955,9 @@ export class BaileysGateway implements WhatsAppGateway {
       if (!mapped) continue;
       if (!(mapped.chatJid.endsWith('@g.us') || isDirectJid(mapped.chatJid))) continue;
       // Em grupo, o nome legível é o subject conhecido; sobrescreve o fallback.
-      const conv = resolveConversation(
-        mapped.chatJid,
-        this.groups.get(mapped.chatJid) ?? mapped.chatJid,
-        null,
-      );
       this.emitter.emit('call', {
         ...mapped,
-        conversationSlug: conv.conversationSlug,
+        conversationSlug: this.canonicalSlug(mapped.chatJid),
       } satisfies InboundCall);
     }
   }
@@ -941,7 +971,11 @@ export class BaileysGateway implements WhatsAppGateway {
     const jid = p.id;
     if (!jid || !(jid.endsWith('@g.us') || isDirectJid(jid))) return;
     const mapped = mapPresence(jid, this.groups.get(jid) ?? jid, p.presences);
-    if (mapped) this.emitter.emit('presence', mapped);
+    if (mapped)
+      this.emitter.emit('presence', {
+        ...mapped,
+        conversationSlug: this.canonicalSlug(jid),
+      });
   }
 
   /**
@@ -1009,7 +1043,7 @@ export class BaileysGateway implements WhatsAppGateway {
       targetId,
       chatJid: jid,
       isDirect: conv.isDirect,
-      conversationSlug: conv.conversationSlug,
+      conversationSlug: this.canonicalSlug(jid),
       by: key.participant || (isDirectJid(jid) ? jid : null),
       timestamp: new Date(),
     } satisfies InboundDelete);
@@ -1027,7 +1061,7 @@ export class BaileysGateway implements WhatsAppGateway {
       targetId,
       chatJid: jid,
       isDirect: conv.isDirect,
-      conversationSlug: conv.conversationSlug,
+      conversationSlug: this.canonicalSlug(jid),
       newText,
       timestamp: new Date(),
     } satisfies InboundEdit);
@@ -1063,7 +1097,12 @@ export class BaileysGateway implements WhatsAppGateway {
   private ensureReceiptState(jid: string, id: string): ReceiptState {
     let state = this.receipts.get(id);
     if (!state) {
-      state = { groupJid: jid, status: 'sent', delivered: new Set(), read: new Set() };
+      state = {
+        groupJid: jid,
+        status: 'sent',
+        delivered: new Set(),
+        read: new Set(),
+      };
       this.receipts.set(id, state);
       // Evict do mais antigo quando passa do teto (Map preserva ordem de inserção).
       if (this.receipts.size > MAX_RECEIPTS) {
@@ -1089,7 +1128,7 @@ export class BaileysGateway implements WhatsAppGateway {
       groupJid: jid,
       groupName: conv.groupName,
       isDirect: conv.isDirect,
-      conversationSlug: conv.conversationSlug,
+      conversationSlug: this.canonicalSlug(jid),
       targetId: id,
       status: state.status,
       readBy: state.read.size,
@@ -1106,7 +1145,11 @@ export class BaileysGateway implements WhatsAppGateway {
       if (!jid || !(jid.endsWith('@g.us') || isDirectJid(jid))) continue; // grupos e DMs
       const groupName = this.groups.get(jid) ?? jid;
       const mapped = mapReaction(item, groupName);
-      if (mapped) this.emitter.emit('reaction', mapped);
+      if (mapped)
+        this.emitter.emit('reaction', {
+          ...mapped,
+          conversationSlug: this.canonicalSlug(jid),
+        });
     }
   }
 
@@ -1255,7 +1298,11 @@ export class BaileysGateway implements WhatsAppGateway {
       // Voto de enquete: decifra e emite (o pollUpdateMessage não vira balão).
       if (this.handlePollVote(wa, groupName)) continue;
       const mapped = mapMessage(wa, sock, groupName);
-      if (mapped) this.emitMessageDeduped(mapped);
+      if (mapped)
+        this.emitMessageDeduped({
+          ...mapped,
+          conversationSlug: this.canonicalSlug(jid, wa.key.remoteJidAlt),
+        });
     }
   }
 
@@ -1281,7 +1328,11 @@ export class BaileysGateway implements WhatsAppGateway {
       this.handlePoll(wa, groupName);
       if (this.handlePollVote(wa, groupName)) continue;
       const mapped = mapMessage(wa, sock, groupName);
-      if (mapped) this.emitMessageDeduped(mapped);
+      if (mapped)
+        this.emitMessageDeduped({
+          ...mapped,
+          conversationSlug: this.canonicalSlug(jid, wa.key.remoteJidAlt),
+        });
     }
   }
 
@@ -1298,7 +1349,10 @@ export class BaileysGateway implements WhatsAppGateway {
     const options: Record<string, string> = {};
     for (const o of poll.options) options[o.hash] = o.name;
     this.polls.set(poll.pollMsgId, { creatorJid, secretB64, options });
-    this.emitter.emit('poll', poll);
+    this.emitter.emit('poll', {
+      ...poll,
+      conversationSlug: this.canonicalSlug(wa.key.remoteJid ?? '', wa.key.remoteJidAlt),
+    });
   }
 
   /**
@@ -1342,7 +1396,7 @@ export class BaileysGateway implements WhatsAppGateway {
         pollMsgId,
         groupJid: wa.key.remoteJid,
         isDirect: conv.isDirect,
-        conversationSlug: conv.conversationSlug,
+        conversationSlug: this.canonicalSlug(wa.key.remoteJid, wa.key.remoteJidAlt),
         voter: voterJid,
         voterName: wa.pushName?.trim() || voterJid.split('@')[0] || 'desconhecido',
         selectedHashes,
@@ -1362,12 +1416,18 @@ export class BaileysGateway implements WhatsAppGateway {
    * `pushName` dá o nome. Sem isso, quem só posta (e some) ficaria sem telefone.
    */
   private captureSenderFromMessage(wa: WAMessage): void {
-    if (wa.key.fromMe) return;
     const key = wa.key;
-    const name = wa.pushName?.trim() || undefined;
+    if (key.fromMe && !(isDirectJid(key.remoteJid ?? '') && key.remoteJidAlt)) return;
+    const name = key.fromMe ? undefined : wa.pushName?.trim() || undefined;
     // Em grupo: participant(+Alt). Em DM: remoteJid(+Alt).
-    const primary = key.participant || (isDirectJid(key.remoteJid ?? '') ? key.remoteJid : null);
-    const alt = key.participant ? key.participantAlt : key.remoteJidAlt;
+    const primary = key.fromMe
+      ? key.remoteJid
+      : key.participant || (isDirectJid(key.remoteJid ?? '') ? key.remoteJid : null);
+    const alt = key.fromMe
+      ? key.remoteJidAlt
+      : key.participant
+        ? key.participantAlt
+        : key.remoteJidAlt;
     const lid = pickByKind(primary, alt, 'lid');
     const phone = pickByKind(primary, alt, 'phone');
     if (lid || phone) this.contacts.merge({ lid, phone, name });
@@ -1390,17 +1450,31 @@ export class BaileysGateway implements WhatsAppGateway {
    */
   async fetchHistoryBefore(
     jid: string,
-    ancora: { id: string; timestampMs: number; fromMe: boolean; sender: string },
+    ancora: {
+      id: string;
+      timestampMs: number;
+      fromMe: boolean;
+      sender: string;
+    },
+    count = 50,
   ): Promise<boolean> {
     const sock = this.sock;
     if (!sock) return false;
-    const key: WAMessageKey = { remoteJid: jid, id: ancora.id, fromMe: ancora.fromMe };
+    const key: WAMessageKey = {
+      remoteJid: jid,
+      id: ancora.id,
+      fromMe: ancora.fromMe,
+    };
     if (jid.endsWith('@g.us') && !ancora.fromMe && ancora.sender.includes('@')) {
       key.participant = ancora.sender;
     }
     // O campo do protocolo é oldestMsgTimestampMs — MILISSEGUNDOS. Em segundos
     // o celular procura a âncora em ~1970 e ignora o pedido em silêncio.
-    await sock.fetchMessageHistory(50, key, ancora.timestampMs);
+    await sock.fetchMessageHistory(
+      Number.isFinite(count) ? Math.max(1, Math.min(100, Math.trunc(count))) : 50,
+      key,
+      ancora.timestampMs,
+    );
     return true;
   }
 

@@ -13,7 +13,7 @@ import {
   ultimoGroupJid,
 } from "@/lib/caixa";
 import type { MessageView } from "@/lib/data";
-import { fundirMensagens } from "@/lib/dm-irmaos";
+import { fundirMensagens, mesclarCaudaMensagens } from "@/lib/dm-irmaos";
 import type { PresencaAgente } from "@/lib/equipe/presenca-interna";
 import { instanteLongo } from "@/lib/formatar-data";
 import type { NotaInterna } from "@/lib/notas-internas";
@@ -231,6 +231,8 @@ export function Timeline({
   useEffect(() => setUltimoAtendimento(ultimoAtendimentoInicial), [ultimoAtendimentoInicial]);
   const [totalCount, setTotalCount] = useState(total ?? initial.length);
   const [loadingOlder, setLoadingOlder] = useState(false);
+  const [buscandoHistorico, setBuscandoHistorico] = useState(false);
+  const [avisoHistorico, setAvisoHistorico] = useState<string | null>(null);
   // Há mais histórico acima? (some quando uma paginação volta vazia ou incompleta)
   const [hasMore, setHasMore] = useState((total ?? initial.length) > initial.length);
   const [teamIds, setTeamIds] = useState<Set<string>>(new Set());
@@ -295,14 +297,16 @@ export function Timeline({
       );
       if (!res.ok) return;
       const older = (await res.json()) as MessageView[];
-      if (older.length === 0) {
+      const n = older.filter((m) => m.type !== "call").length;
+      if (n === 0) {
         setHasMore(false);
         return;
       }
       const el = scrollRef.current;
       const prevHeight = el?.scrollHeight ?? 0;
       setMessages((cur) => fundirMensagens([older, cur]));
-      if (older.filter((m) => m.type !== "call").length < 150) setHasMore(false);
+      // Página cheia = ainda pode haver mais no disco (ex.: bloco que o WhatsApp acabou de devolver).
+      setHasMore(n >= 150);
       // Reancora a rolagem depois que o bloco novo pintar acima.
       requestAnimationFrame(() => {
         if (el) el.scrollTop += el.scrollHeight - prevHeight;
@@ -313,6 +317,48 @@ export function Timeline({
       setLoadingOlder(false);
     }
   }, [messages, slug, loadingOlder, rotas]);
+
+  const buscarMaisAntigasWhatsApp = useCallback(async () => {
+    const first = messages.find((m) => m.type !== "call");
+    if (!first || buscandoHistorico || rotas.modo !== "dono") return;
+    setBuscandoHistorico(true);
+    setAvisoHistorico(null);
+    try {
+      const res = await fetch("/api/history", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          slug,
+          jid: first.groupJid || ultimoGroupJid(messages) || undefined,
+          anchor: {
+            id: first.id,
+            timestampMs: Date.parse(first.timestamp),
+            fromMe: Boolean(first.fromMe),
+            sender: first.sender,
+          },
+        }),
+      });
+      const data = (await res.json().catch(() => null)) as { ok?: boolean; error?: string } | null;
+      if (!res.ok || !data?.ok) {
+        setAvisoHistorico(data?.error ? String(data.error) : "Não deu pra pedir o histórico agora.");
+        return;
+      }
+      setAvisoHistorico(
+        "Pedido enviado ao WhatsApp — se houver mais histórico no celular, aparece em instantes",
+      );
+      // O celular devolve o bloco com atraso; tenta puxar sem perder a rolagem.
+      window.setTimeout(() => {
+        void loadOlder();
+      }, 3000);
+      window.setTimeout(() => {
+        void loadOlder();
+      }, 8000);
+    } catch {
+      setAvisoHistorico("Não deu pra pedir o histórico agora.");
+    } finally {
+      setBuscandoHistorico(false);
+    }
+  }, [messages, buscandoHistorico, rotas.modo, slug, loadOlder]);
 
   const onScroll = useCallback(() => {
     const el = scrollRef.current;
@@ -472,12 +518,9 @@ export function Timeline({
       lastBodyRef.current = body;
       setUltimoAtendimento(atendimento);
       // Preserva o histórico paginado acima e troca só a cauda (o que veio agora, por id).
+      // Cauda vazia não zera a tela (fusão transitória / reinício).
       setMessages((cur) => {
-        const ids = new Set(tail.map((m) => m.id));
-        const kept = cur.filter((m) => !ids.has(m.id));
-        const firstTailTs = tail[0]?.timestamp ?? "";
-        const older = kept.filter((m) => m.timestamp <= firstTailTs);
-        const next = fundirMensagens([older, tail]);
+        const next = mesclarCaudaMensagens(cur, tail);
         setTotalCount((t) => Math.max(t, next.length));
         return next;
       });
@@ -921,6 +964,21 @@ export function Timeline({
                     </>
                   )}
                 </Button>
+              </div>
+            )}
+            {!hasMore && mediaFilter === "all" && shown.length > 0 && rotas.modo === "dono" && (
+              <div className="mt-4 flex flex-col items-center gap-1.5">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void buscarMaisAntigasWhatsApp()}
+                  disabled={buscandoHistorico}
+                >
+                  {buscandoHistorico ? "Pedindo ao WhatsApp…" : "Buscar mais antigas no WhatsApp"}
+                </Button>
+                {avisoHistorico && (
+                  <p className="max-w-[28rem] text-center text-[12px] text-fg-faint">{avisoHistorico}</p>
+                )}
               </div>
             )}
             {ultimoAtendimento && !shown.some((m) => m.id === ultimoAtendimento.reabertoPorMensagem) && (

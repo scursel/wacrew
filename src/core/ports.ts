@@ -29,6 +29,16 @@ import type {
  * A aplicação depende SÓ desta interface — troca de lib = troca de 1 arquivo.
  */
 export interface WhatsAppGateway {
+  fetchHistoryBefore(
+    jid: string,
+    anchor: {
+      id: string;
+      timestampMs: number;
+      fromMe: boolean;
+      sender: string;
+    },
+    count?: number,
+  ): Promise<boolean>;
   /** Conecta, trata QR e reconexão. Resolve quando a 1ª conexão é iniciada. */
   start(): Promise<void>;
   /** Encerra a conexão de forma limpa. */

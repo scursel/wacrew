@@ -38,9 +38,39 @@ export function slugsIrmaosDeDm(
   return out.length ? out : [slug];
 }
 
+/**
+ * Slug que representa a conversa entre irmãos de DM: o do telefone (não é
+ * LID conhecido e não aponta pra outro número), senão o menor — o mesmo
+ * resultado em qualquer ordem.
+ */
+export function slugCanonicoDm(irmaos: string[], c: Contacts): string {
+  for (const s of irmaos) {
+    const id = /^dm-(\d+)$/.exec(s)?.[1];
+    if (id && !c.lids.has(id) && (c.phones.get(id) ?? id) === id) return s;
+  }
+  return [...irmaos].sort()[0] ?? '';
+}
+
 /** Junta várias listas por id (sem duplicar) e ordena por timestamp. */
 export function fundirMensagens<T extends Pick<MessageView, 'id' | 'timestamp'>>(listas: T[][]): T[] {
   const porId = new Map<string, T>();
   for (const lista of listas) for (const m of lista) if (!porId.has(m.id)) porId.set(m.id, m);
   return [...porId.values()].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+}
+
+/**
+ * Mescla a cauda fresca do poll com o que já está na tela. `tail` vazio
+ * (fusão transitória / reinício) NÃO zera a conversa — devolve `cur` intacto.
+ * Com cauda, preserva o que é anterior ao início dela e funde por id.
+ */
+export function mesclarCaudaMensagens<T extends Pick<MessageView, 'id' | 'timestamp'>>(
+  cur: T[],
+  tail: T[],
+): T[] {
+  if (tail.length === 0) return cur;
+  const ids = new Set(tail.map((m) => m.id));
+  const kept = cur.filter((m) => !ids.has(m.id));
+  const firstTailTs = tail[0]?.timestamp ?? '';
+  const older = kept.filter((m) => m.timestamp <= firstTailTs);
+  return fundirMensagens([older, tail]);
 }

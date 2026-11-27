@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Contacts } from './contacts';
 import type { MessageView } from './data';
-import { fundirMensagens, slugsIrmaosDeDm } from './dm-irmaos';
+import { fundirMensagens, mesclarCaudaMensagens, slugsIrmaosDeDm } from './dm-irmaos';
 
 const c: Contacts = {
   names: new Map(),
@@ -55,5 +55,26 @@ describe('fundirMensagens', () => {
       [m('a', '2026-09-08T10:00:00Z'), m('b', '2026-09-09T10:00:00Z')],
     ]);
     expect(out.map((x) => x.id)).toEqual(['a', 'b', 'c']);
+  });
+});
+
+describe('mesclarCaudaMensagens', () => {
+  const m = (id: string, ts: string) => ({ id, timestamp: ts }) as MessageView;
+
+  it('tail vazio preserva cur intacto (não zera a conversa)', () => {
+    const cur = [m('a', '2026-09-08T10:00:00Z'), m('b', '2026-09-09T10:00:00Z')];
+    const out = mesclarCaudaMensagens(cur, []);
+    expect(out).toBe(cur);
+    expect(out.map((x) => x.id)).toEqual(['a', 'b']);
+  });
+
+  it('preserva o histórico acima da cauda e troca a cauda por id', () => {
+    const cur = [
+      m('old', '2026-09-01T10:00:00Z'),
+      m('mid', '2026-09-08T10:00:00Z'),
+      m('tail-old', '2026-09-09T10:00:00Z'),
+    ];
+    const tail = [m('mid', '2026-09-08T10:00:00Z'), m('tail-new', '2026-09-10T10:00:00Z')];
+    expect(mesclarCaudaMensagens(cur, tail).map((x) => x.id)).toEqual(['old', 'mid', 'tail-new']);
   });
 });

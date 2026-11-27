@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { readGroupMessages } from "@/lib/data";
+import { fundirMensagens } from "@/lib/dm-irmaos";
+import { resolverIrmaosDm } from "@/lib/dm-conversa";
+import { janelaDaConversa } from "@/lib/equipe/conversa";
 import { ultimoAtendimento } from "@/lib/ultimo-atendimento";
 
 export const runtime = "nodejs";
@@ -21,18 +24,20 @@ export async function GET(req: Request) {
   if (before && !/^[\w=+/-]{1,128}$/.test(before)) {
     return NextResponse.json({ error: "before inválido" }, { status: 400 });
   }
+  const { irmaos } = await resolverIrmaosDm(slug);
   // all=1 devolve o histórico inteiro (consumidor: o MCP em modo remoto, que
   // precisa da mesma visão que teria lendo o disco). O painel segue paginando.
   if (url.searchParams.get("all") === "1") {
-    return NextResponse.json(await readGroupMessages(slug, { before }));
+    const listas = await Promise.all(irmaos.map((s) => readGroupMessages(s, { before })));
+    return NextResponse.json(fundirMensagens(listas));
   }
   const rawLimit = Number(url.searchParams.get("limit"));
   const limit = Number.isFinite(rawLimit) && rawLimit > 0
     ? Math.min(rawLimit, MAX_LIMIT)
     : DEFAULT_LIMIT;
-  const mensagens = readGroupMessages(slug, { limit, before });
+  const mensagens = janelaDaConversa(irmaos, { limit, before });
   if (!before && url.searchParams.get("ultimoAtendimento") === "1") {
-    const [messages, atendimento] = await Promise.all([mensagens, ultimoAtendimento([slug])]);
+    const [messages, atendimento] = await Promise.all([mensagens, ultimoAtendimento(irmaos)]);
     return NextResponse.json({ messages, ultimoAtendimento: atendimento });
   }
   return NextResponse.json(await mensagens);

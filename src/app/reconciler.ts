@@ -3,7 +3,13 @@ import { join } from 'node:path';
 import { logger } from '../logger.js';
 import { writeJsonAtomicNode } from '../storage/atomic.js';
 import { fundirConversa } from '../storage/fundir-conversa.js';
-import { type Buraco, detectarBuraco, precisaAvatar, proximaExecucaoMs, type RegistroTail } from './reconciler-core.js';
+import {
+  type Buraco,
+  detectarBuraco,
+  precisaAvatar,
+  proximaExecucaoMs,
+  type RegistroTail,
+} from './reconciler-core.js';
 
 /**
  * Reconciliador: de tempos em tempos (intervalo configurável pelo painel),
@@ -19,7 +25,12 @@ export interface ReconcilerDeps {
   lastActivityOf(slug: string): number | null;
   fetchHistoryBefore(
     jid: string,
-    ancora: { id: string; timestampMs: number; fromMe: boolean; sender: string },
+    ancora: {
+      id: string;
+      timestampMs: number;
+      fromMe: boolean;
+      sender: string;
+    },
   ): Promise<boolean>;
   watchedEntries(): Array<{ id: string; slug: string | undefined }>;
   /** Telefone real de um user-part (LID→fone), pelo sidecar de contatos. */
@@ -166,8 +177,32 @@ export class Reconciler {
           logger.warn({ err }, 'Reconciliador: refreshGroups falhou.'),
         );
 
-        // 3) Buracos de histórico nos grupos monitorados.
-        for (const { id: jid, slug } of this.deps.watchedEntries()) {
+        // 3) Buracos nos grupos monitorados e DMs com atividade recente.
+        const entries = this.deps.watchedEntries();
+        const seen = new Set(entries.map((entry) => entry.slug).filter(Boolean));
+        const dirs = await readdir(this.deps.dataDir, {
+          withFileTypes: true,
+        }).catch(() => []);
+        for (const dir of dirs) {
+          if (!dir.isDirectory() || !dir.name.startsWith('dm-') || seen.has(dir.name)) continue;
+          const id = dir.name.slice(3);
+          const phone = this.deps.phoneOf(id);
+          if (phone && phone !== id) continue; // duplicata fundível
+          const info = await stat(join(this.deps.dataDir, dir.name, 'messages.jsonl')).catch(
+            () => null,
+          );
+          if (!info || Date.now() - info.mtimeMs > 30 * 24 * 60 * 60_000) continue;
+          const tail = await this.lerTail(dir.name);
+          const lastJid = [...tail].reverse().find((record) => record.groupJid)?.groupJid;
+          const lastPhone = lastJid?.endsWith('@lid')
+            ? this.deps.phoneOf(lastJid.split('@')[0] ?? '')
+            : null;
+          const jid = lastPhone
+            ? `${lastPhone}@s.whatsapp.net`
+            : lastJid || (/^\d+$/.test(id) ? `${id}@s.whatsapp.net` : undefined);
+          if (jid) entries.push({ id: jid, slug: dir.name });
+        }
+        for (const { id: jid, slug } of entries) {
           if (!slug) continue;
           resumo.chatsVerificados++;
           const tail = await this.lerTail(slug);
@@ -324,6 +359,7 @@ export class Reconciler {
             timestamp?: string;
             fromMe?: boolean;
             sender?: string;
+            groupJid?: string;
           };
           if (!r.id || !r.timestamp) continue;
           out.push({
@@ -331,6 +367,7 @@ export class Reconciler {
             timestampMs: new Date(r.timestamp).getTime(),
             fromMe: Boolean(r.fromMe),
             sender: r.sender ?? '',
+            ...(r.groupJid ? { groupJid: r.groupJid } : {}),
           });
         } catch {
           // linha cortada/corrompida — ignora

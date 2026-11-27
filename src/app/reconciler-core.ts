@@ -9,11 +9,10 @@ export interface RegistroTail {
   timestampMs: number;
   fromMe: boolean;
   sender: string;
+  groupJid?: string;
 }
 
-export type Buraco =
-  | { tipo: 'sem_ancora' }
-  | { tipo: 'com_ancora'; ancora: RegistroTail };
+export type Buraco = { tipo: 'sem_ancora' } | { tipo: 'com_ancora'; ancora: RegistroTail };
 
 /** Diferenças menores que isto não são buraco (clock skew, entrega atrasada). */
 const MARGEM_MS = 5 * 60_000;

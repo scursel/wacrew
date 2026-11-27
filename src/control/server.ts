@@ -232,6 +232,133 @@ export function startControlServer(
       return;
     }
 
+    if (req.method === 'POST' && req.url === '/history') {
+      void (async () => {
+        const body = (await readJson(req)) as {
+          slug?: unknown;
+          jid?: unknown;
+          count?: unknown;
+          anchor?: {
+            id?: unknown;
+            timestampMs?: unknown;
+            fromMe?: unknown;
+            sender?: unknown;
+          };
+        };
+        const slug = body?.slug;
+        if (
+          typeof slug !== 'string' ||
+          !slug.trim() ||
+          slug.includes('/') ||
+          slug.includes('\\') ||
+          slug.includes('..')
+        ) {
+          json(400, { ok: false, error: 'slug inválido' });
+          return;
+        }
+        let anchor = body.anchor;
+        let diskJid: string | undefined;
+        if (!anchor) {
+          let raw: string;
+          try {
+            raw = await readFile(join(env.DATA_DIR, slug, 'messages.jsonl'), 'utf8');
+          } catch (err) {
+            if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+            raw = '';
+          }
+          for (const line of raw.split('\n')) {
+            try {
+              const record = JSON.parse(line) as {
+                id?: string;
+                timestamp?: string;
+                fromMe?: boolean;
+                sender?: string;
+                groupJid?: string;
+              };
+              const timestampMs = Date.parse(record.timestamp ?? '');
+              if (
+                record.id &&
+                Number.isFinite(timestampMs) &&
+                (!anchor || timestampMs < (anchor.timestampMs as number))
+              ) {
+                anchor = {
+                  id: record.id,
+                  timestampMs,
+                  fromMe: record.fromMe === true,
+                  sender: record.sender ?? '',
+                };
+                diskJid = record.groupJid;
+              }
+            } catch {
+              /* linha inválida */
+            }
+          }
+        }
+        if (!anchor) {
+          json(400, {
+            ok: false,
+            error: 'conversa sem mensagem âncora para buscar histórico anterior',
+          });
+          return;
+        }
+        if (
+          typeof anchor.id !== 'string' ||
+          !anchor.id ||
+          typeof anchor.timestampMs !== 'number' ||
+          !Number.isFinite(anchor.timestampMs) ||
+          !Number.isFinite(new Date(anchor.timestampMs).getTime()) ||
+          typeof anchor.fromMe !== 'boolean' ||
+          typeof anchor.sender !== 'string'
+        ) {
+          json(400, { ok: false, error: 'âncora inválida' });
+          return;
+        }
+        const digits = /^dm-(\d+)$/.exec(slug)?.[1];
+        const jid =
+          (typeof body.jid === 'string' && body.jid) ||
+          diskJid ||
+          (digits ? `${digits}@s.whatsapp.net` : undefined);
+        if (!jid) {
+          json(400, {
+            ok: false,
+            error: 'não foi possível determinar o JID da conversa',
+          });
+          return;
+        }
+        const count =
+          typeof body.count === 'number' && Number.isFinite(body.count)
+            ? Math.max(1, Math.min(100, Math.trunc(body.count)))
+            : 50;
+        const ok = await gateway.fetchHistoryBefore(
+          jid,
+          {
+            id: anchor.id,
+            timestampMs: anchor.timestampMs,
+            fromMe: anchor.fromMe,
+            sender: anchor.sender,
+          },
+          count,
+        );
+        if (!ok) {
+          json(503, { ok: false, error: 'WhatsApp desconectado' });
+          return;
+        }
+        json(200, {
+          ok: true,
+          requested: true,
+          slug,
+          anchorId: anchor.id,
+          anchorTimestamp: new Date(anchor.timestampMs).toISOString(),
+        });
+      })().catch((err: unknown) =>
+        json(500, {
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+      );
+      return;
+    }
+
     // Dispara um ciclo do reconciliador fora de hora (o painel usa no "agora").
     if (req.method === 'POST' && req.url === '/reconcile') {
       if (!reconciler) {
@@ -318,14 +445,18 @@ export function startControlServer(
             return;
           }
           if (!MEDIA_KINDS.has(kind)) {
-            json(400, { error: 'kind deve ser image, document, audio, video ou gif' });
+            json(400, {
+              error: 'kind deve ser image, document, audio, video ou gif',
+            });
             return;
           }
           let safeUrl: URL;
           try {
             safeUrl = await assertPublicHttpUrl(url);
           } catch (e) {
-            json(400, { error: e instanceof Error ? e.message : 'url inválida' });
+            json(400, {
+              error: e instanceof Error ? e.message : 'url inválida',
+            });
             return;
           }
           const destino = await resolverJid(jid);
@@ -498,7 +629,9 @@ export function startControlServer(
       const url = new URL(req.url, 'http://localhost');
       const partes = url.pathname.split('/').filter(Boolean);
       if (partes.length === 2) {
-        const t = fila.status({ ticket: decodeURIComponent(partes[1] as string) });
+        const t = fila.status({
+          ticket: decodeURIComponent(partes[1] as string),
+        });
         if (!t) json(404, { error: 'ticket não encontrado' });
         else json(200, { ok: true, entrega: resumoTicket(t) });
         return;
@@ -517,7 +650,10 @@ export function startControlServer(
     if (req.method === 'POST' && req.url === '/cancelar-envio') {
       readJson(req)
         .then((parsed) => {
-          const { jid, ticket } = (parsed ?? {}) as { jid?: string; ticket?: string };
+          const { jid, ticket } = (parsed ?? {}) as {
+            jid?: string;
+            ticket?: string;
+          };
           if (!jid && !ticket) {
             json(400, { error: 'jid ou ticket é obrigatório' });
             return;
@@ -535,7 +671,12 @@ export function startControlServer(
             { jid: t.jid, ticket: t.id },
             '📵 Cancelamento de envio pedido pelo operador.',
           );
-          json(200, { ok: true, cancelado: true, ticket: t.id, enviados: t.enviados });
+          json(200, {
+            ok: true,
+            cancelado: true,
+            ticket: t.id,
+            enviados: t.enviados,
+          });
         })
         .catch((err) => json(400, { error: err instanceof Error ? err.message : 'erro' }));
       return;
