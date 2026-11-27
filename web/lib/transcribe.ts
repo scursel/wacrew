@@ -62,8 +62,9 @@ async function viaNuvem(absPath: string, language: string): Promise<string> {
     method: "POST",
     headers: { Authorization: `Bearer ${destino.chave}` },
     body: form,
+    signal: AbortSignal.timeout(60_000),
   });
-  const data = (await res.json()) as { text?: string; error?: { message?: string } | string };
+  const data = (await res.json().catch(() => ({}))) as { text?: string; error?: { message?: string } | string };
   if (!res.ok || typeof data.text !== "string") {
     const msg = typeof data.error === "string" ? data.error : data.error?.message;
     throw new Error(semChave(msg ?? `9router STT falhou (HTTP ${res.status}).`, destino.chave));

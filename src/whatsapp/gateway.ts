@@ -195,6 +195,8 @@ export class BaileysGateway implements WhatsAppGateway {
   private pairCodeRequested = false;
   private lastQr: string | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Serializa transições de socket (connect/reconnect/resetSession/repair) para evitar 2 sockets simultâneos. */
+  private connQueue: Promise<unknown> = Promise.resolve();
   /** Mapa LID↔telefone↔nome persistido em `<DATA_DIR>/.contacts.json`. */
   private readonly contacts: ContactStore;
   /**
@@ -335,21 +337,61 @@ export class BaileysGateway implements WhatsAppGateway {
     this.sock?.end(undefined);
   }
 
+  private serializarConexao<T>(fn: () => Promise<T>): Promise<T> {
+    const passo = this.connQueue.then(fn, fn);
+    this.connQueue = passo.catch(() => undefined);
+    return passo;
+  }
+
+  /** Remove todos os listeners do socket atual (inclusive creds.update), fecha e zera `this.sock`. */
+  private teardownSocket(): void {
+    const current = this.sock;
+    this.sock = null;
+    if (!current) return;
+    try {
+      current.ev.removeAllListeners('connection.update');
+      current.ev.removeAllListeners('messages.upsert');
+      current.ev.removeAllListeners('messages.reaction');
+      current.ev.removeAllListeners('messages.update');
+      current.ev.removeAllListeners('message-receipt.update');
+      current.ev.removeAllListeners('contacts.upsert');
+      current.ev.removeAllListeners('contacts.update');
+      current.ev.removeAllListeners('lid-mapping.update');
+      current.ev.removeAllListeners('messaging-history.set');
+      current.ev.removeAllListeners('call');
+      current.ev.removeAllListeners('groups.update');
+      current.ev.removeAllListeners('group-participants.update');
+      current.ev.removeAllListeners('chats.upsert');
+      current.ev.removeAllListeners('chats.update');
+      current.ev.removeAllListeners('chats.delete');
+      current.ev.removeAllListeners('presence.update');
+      current.ev.removeAllListeners('blocklist.set');
+      current.ev.removeAllListeners('blocklist.update');
+      current.ev.removeAllListeners('creds.update');
+      current.end(undefined);
+    } catch {
+      // socket já morto — segue
+    }
+  }
+
   /** Força uma reconexão imediata mantendo as credenciais atuais. */
   async reconnect(): Promise<void> {
     if (this.stopping) return;
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
-    this.reconnectAttempts = 0;
-    logger.info('🔄 Reconexão manual solicitada pelo painel.');
-    this.emitter.emit('status', {
-      connection: 'connecting',
-      qr: null,
-      pairingCode: null,
-    } satisfies GatewayStatus);
-    await this.connect();
+    await this.serializarConexao(async () => {
+      if (this.stopping) return;
+      if (this.reconnectTimer) {
+        clearTimeout(this.reconnectTimer);
+        this.reconnectTimer = null;
+      }
+      this.reconnectAttempts = 0;
+      logger.info('🔄 Reconexão manual solicitada pelo painel.');
+      this.emitter.emit('status', {
+        connection: 'connecting',
+        qr: null,
+        pairingCode: null,
+      } satisfies GatewayStatus);
+      await this.connectInner(true);
+    });
   }
 
   /**
@@ -358,34 +400,50 @@ export class BaileysGateway implements WhatsAppGateway {
    */
   async resetSession(): Promise<void> {
     if (this.stopping) return;
-    if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
-      this.reconnectTimer = null;
-    }
-    this.reconnectAttempts = 0;
-    this.lastQr = null;
-    logger.warn('🔌 Troca de aparelho / novo QR solicitada pelo painel.');
-    const current = this.sock;
-    if (current) {
-      // Remove listener de connection.update antes do logout para evitar disparo duplo de repair().
-      try {
-        current.ev.removeAllListeners('connection.update');
-      } catch {
-        // ignora
+    await this.serializarConexao(async () => {
+      if (this.stopping) return;
+      if (this.reconnectTimer) {
+        clearTimeout(this.reconnectTimer);
+        this.reconnectTimer = null;
       }
-      if (current.user) {
-        await Promise.race([
-          current.logout().catch(() => {}),
-          new Promise<void>((r) => setTimeout(r, 2500)),
-        ]);
+      this.reconnectAttempts = 0;
+      this.lastQr = null;
+      logger.warn('🔌 Troca de aparelho / novo QR solicitada pelo painel.');
+      const current = this.sock;
+      if (current) {
+        try {
+          current.ev.removeAllListeners('connection.update');
+        } catch {
+          // ignora
+        }
+        if (current.user) {
+          await Promise.race([
+            current.logout().catch(() => {}),
+            new Promise<void>((r) => setTimeout(r, 2500)),
+          ]);
+        }
       }
-    }
-    this.emitter.emit('status', {
-      connection: 'connecting',
-      qr: null,
-      pairingCode: null,
-    } satisfies GatewayStatus);
-    await this.repair();
+      // Fecha socket e remove creds.update ANTES de arquivar authDir.
+      this.teardownSocket();
+      // Limpa estado em memória da sessão anterior para evitar contaminação em troca de conta.
+      this.groups.clear();
+      this.seenIds.clear();
+      this.receipts.clear();
+      this.lastIncomingKey.clear();
+      this.recebidasRecentes.clear();
+      this.enviadasRecentes.clear();
+      this.groupsReady = new Promise<void>((resolve) => {
+        this.markGroupsReady = resolve;
+      });
+      this.emitter.emit('status', {
+        connection: 'connecting',
+        qr: null,
+        pairingCode: null,
+      } satisfies GatewayStatus);
+      const backup = await archiveAuthDir(this.authDir);
+      if (backup) logger.warn({ backup }, '🗄️  Credenciais antigas arquivadas.');
+      await this.connectInner(true);
+    });
   }
 
   /** Jid normalizado da PRÓPRIA conta (chat "você mesmo") — null sem sessão. */
@@ -733,36 +791,14 @@ export class BaileysGateway implements WhatsAppGateway {
   }
 
   private async connect(): Promise<void> {
+    await this.serializarConexao(() => this.connectInner(false));
+  }
+
+  private async connectInner(propagarErro: boolean): Promise<void> {
+    if (this.stopping) return;
     try {
       // Desliga o socket anterior (evita listeners/conexões órfãos a cada reconexão).
-      if (this.sock) {
-        try {
-          this.sock.ev.removeAllListeners('connection.update');
-          this.sock.ev.removeAllListeners('messages.upsert');
-          this.sock.ev.removeAllListeners('messages.reaction');
-          this.sock.ev.removeAllListeners('messages.update');
-          this.sock.ev.removeAllListeners('message-receipt.update');
-          this.sock.ev.removeAllListeners('contacts.upsert');
-          this.sock.ev.removeAllListeners('contacts.update');
-          this.sock.ev.removeAllListeners('lid-mapping.update');
-          this.sock.ev.removeAllListeners('messaging-history.set');
-          // Listeners de fundação adicionados em connect() — par obrigatório no
-          // teardown, senão vaza um listener a cada reconexão.
-          this.sock.ev.removeAllListeners('call');
-          this.sock.ev.removeAllListeners('groups.update');
-          this.sock.ev.removeAllListeners('group-participants.update');
-          this.sock.ev.removeAllListeners('chats.upsert');
-          this.sock.ev.removeAllListeners('chats.update');
-          this.sock.ev.removeAllListeners('chats.delete');
-          this.sock.ev.removeAllListeners('presence.update');
-          this.sock.ev.removeAllListeners('blocklist.set');
-          this.sock.ev.removeAllListeners('blocklist.update');
-          this.sock.ev.removeAllListeners('creds.update');
-          this.sock.end(undefined);
-        } catch {
-          // socket já morto — segue
-        }
-      }
+      this.teardownSocket();
       // Nova conexão = novas subscriptions de presença (o servidor não lembra as antigas).
       this.presenceSubscribed.clear();
       const { state, saveCreds } = await useMultiFileAuthState(this.authDir);
@@ -872,6 +908,7 @@ export class BaileysGateway implements WhatsAppGateway {
     } catch (err) {
       logger.error({ err }, 'Falha ao conectar ao WhatsApp. Reagendando com backoff...');
       if (!this.stopping) this.scheduleReconnect();
+      if (propagarErro) throw err;
     }
   }
 
@@ -1306,13 +1343,17 @@ export class BaileysGateway implements WhatsAppGateway {
    * Reconectar com as credenciais antigas seria inútil (o servidor as rejeita).
    */
   private async repair(): Promise<void> {
-    try {
-      const backup = await archiveAuthDir(this.authDir);
-      if (backup) logger.warn({ backup }, '🗄️  Credenciais antigas arquivadas.');
-      await this.connect();
-    } catch (err) {
-      logger.error({ err }, 'Falha ao voltar ao modo de pareamento após logout.');
-    }
+    await this.serializarConexao(async () => {
+      if (this.stopping) return;
+      try {
+        this.teardownSocket();
+        const backup = await archiveAuthDir(this.authDir);
+        if (backup) logger.warn({ backup }, '🗄️  Credenciais antigas arquivadas.');
+        await this.connectInner(false);
+      } catch (err) {
+        logger.error({ err }, 'Falha ao voltar ao modo de pareamento após logout.');
+      }
+    });
   }
 
   private async onMessagesUpsert(upsert: MessagesUpsert): Promise<void> {

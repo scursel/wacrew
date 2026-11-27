@@ -19,8 +19,12 @@ export async function POST(req: Request) {
   if (!body) return NextResponse.json({ error: 'JSON inválido' }, { status: 400 });
 
   if (body.acao === 'testar') {
-    const id = typeof body.id === 'string' ? body.id.trim() : undefined;
-    const inbox = await resolverInbox(id);
+    const id = typeof body.id === 'string' ? body.id.trim() : '';
+    const lista = await lerInboxes();
+    const inbox = id ? lista.find((i) => i.id === id) : await resolverInbox();
+    if (!inbox) {
+      return NextResponse.json({ ok: false, erro: 'Canal não encontrado' }, { status: 404 });
+    }
     const res = await testarConexaoInbox(inbox);
     return NextResponse.json(res);
   }

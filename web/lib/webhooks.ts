@@ -32,6 +32,9 @@ export function validarUrlWebhook(raw: string): string {
   if (u.protocol !== 'http:' && u.protocol !== 'https:') {
     throw new Error('URL deve usar http:// ou https://');
   }
+  if (u.hostname === '169.254.169.254' || u.hostname === 'metadata.google.internal') {
+    throw new Error('Endereço de metadata não permitido');
+  }
   return u.toString();
 }
 
@@ -64,7 +67,7 @@ export async function salvarWebhook(
     criadoEm: existente?.criadoEm ?? input.criadoEm ?? new Date().toISOString(),
   };
   const next = existente ? lista.map((w) => (w.id === id ? cfg : w)) : [...lista, cfg];
-  await writeJsonAtomic(arquivoWebhooks(dataDir), next);
+  await writeJsonAtomic(arquivoWebhooks(dataDir), next, { mode: 0o600 });
   return cfg;
 }
 
@@ -72,7 +75,7 @@ export async function removerWebhook(id: string, dataDir = DATA_DIR): Promise<bo
   const lista = await lerWebhooks(dataDir);
   const next = lista.filter((w) => w.id !== id);
   if (next.length === lista.length) return false;
-  await writeJsonAtomic(arquivoWebhooks(dataDir), next);
+  await writeJsonAtomic(arquivoWebhooks(dataDir), next, { mode: 0o600 });
   return true;
 }
 

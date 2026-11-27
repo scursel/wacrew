@@ -29,6 +29,17 @@ export async function POST(req: Request) {
   const salva = await lerConfigIA();
   const baseUrl =
     typeof body.baseUrl === "string" && body.baseUrl.trim() ? body.baseUrl.trim().replace(/\/+$/, "") : salva.baseUrl;
+  try {
+    const parsedUrl = new URL(baseUrl);
+    if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+      return NextResponse.json({ error: "baseUrl precisa ser uma URL http(s)" }, { status: 400 });
+    }
+    if (parsedUrl.hostname === "169.254.169.254" || parsedUrl.hostname === "metadata.google.internal") {
+      return NextResponse.json({ error: "endereço não permitido" }, { status: 400 });
+    }
+  } catch {
+    return NextResponse.json({ error: "baseUrl precisa ser uma URL http(s) válida" }, { status: 400 });
+  }
   const chave = typeof body.chave === "string" && body.chave.trim() ? body.chave.trim() : salva.chave;
   if (!chave) return NextResponse.json({ ok: false, erro: "salve a chave do 9router antes de testar" });
 

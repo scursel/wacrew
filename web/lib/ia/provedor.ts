@@ -9,6 +9,14 @@ export interface DestinoIA {
 }
 
 const TIMEOUT_LISTA_MS = 10_000;
+const CACHE_LISTA_TTL_MS = 60_000;
+const RE_MODELO_FALA = /whisper|parakeet|asr|scribe|transcribe|stt|nova-\d/i;
+
+let cacheLista: { chave: string; em: number; valor: { combos: string[]; fala: string[] } } | null = null;
+
+export function invalidarCacheModelos9router(): void {
+  cacheLista = null;
+}
 
 export { AVISO_SEM_MODELO } from './aviso';
 
@@ -55,12 +63,17 @@ interface Modelo9Router {
  * (whisper/parakeet/asr). Sem `c`, usa a configuração salva.
  */
 export async function listarModelos9router(
-  c?: { baseUrl: string; chave: string },
+  c?: { baseUrl: string; chave: string; ignorarCache?: boolean },
 ): Promise<{ combos: string[]; fala: string[] }> {
   const cfg = c ?? (await lerConfigIA());
   const baseUrl = cfg.baseUrl.trim().replace(/\/+$/, '');
   const chave = cfg.chave.trim();
   if (!chave) throw new Error('chave do 9router não configurada: salve a chave na tela de modelos de IA');
+
+  const chaveCache = `${baseUrl}|${chave}`;
+  if (!c?.ignorarCache && cacheLista && cacheLista.chave === chaveCache && Date.now() - cacheLista.em < CACHE_LISTA_TTL_MS) {
+    return cacheLista.valor;
+  }
 
   let res: Response;
   try {
@@ -93,7 +106,9 @@ export async function listarModelos9router(
     const id = typeof item.id === 'string' ? item.id.trim() : '';
     if (!id) continue;
     if (item.owned_by === 'combo') combos.add(id);
-    if (/whisper|parakeet|asr/i.test(id)) fala.add(id);
+    if (RE_MODELO_FALA.test(id)) fala.add(id);
   }
-  return { combos: [...combos], fala: [...fala] };
+  const valor = { combos: [...combos], fala: [...fala] };
+  cacheLista = { chave: chaveCache, em: Date.now(), valor };
+  return valor;
 }

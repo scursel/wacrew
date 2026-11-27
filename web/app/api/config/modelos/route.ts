@@ -1,21 +1,28 @@
 import { NextResponse } from "next/server";
 import { configPublica, type FuncaoIA, FUNCOES_IA, lerConfigIA, salvarConfigIA } from "@/lib/ia/config";
-import { listarModelos9router } from "@/lib/ia/provedor";
+import { invalidarCacheModelos9router, listarModelos9router } from "@/lib/ia/provedor";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
  * Config da tela "Modelos de IA". A chave do 9router nunca sai daqui: o GET devolve
- * só `temChave`/`chaveFinal`. A lista de modelos é conveniência da tela — falha dela
- * não derruba a config (vai em `erroLista`).
+ * só `temChave`/`chaveFinal`. Com `?soConfig=1`, responde imediatamente sem consultar
+ * o 9router (evita travar a tela se o 9router estiver lento).
  */
-export async function GET() {
+export async function GET(req: Request) {
+  const url = new URL(req.url);
+  const soConfig = url.searchParams.get("soConfig") === "1";
+  const atualizar = url.searchParams.get("atualizar") === "1";
   const cfg = await lerConfigIA();
   const pub = configPublica(cfg);
-  if (!pub.temChave) return NextResponse.json({ ...pub, combos: [], fala: [] });
+  if (soConfig || !pub.temChave) return NextResponse.json({ ...pub, combos: [], fala: [] });
   try {
-    const { combos, fala } = await listarModelos9router({ baseUrl: cfg.baseUrl, chave: cfg.chave });
+    const { combos, fala } = await listarModelos9router({
+      baseUrl: cfg.baseUrl,
+      chave: cfg.chave,
+      ignorarCache: atualizar,
+    });
     return NextResponse.json({ ...pub, combos, fala });
   } catch (err) {
     const erroLista = err instanceof Error ? err.message : "falha ao listar os modelos do 9router";
@@ -67,5 +74,6 @@ export async function POST(req: Request) {
   const parsed = lerCorpo(body ?? {});
   if ("erro" in parsed) return NextResponse.json({ error: parsed.erro }, { status: 400 });
   const salvo = await salvarConfigIA(parsed);
+  invalidarCacheModelos9router();
   return NextResponse.json(configPublica(salvo));
 }

@@ -204,25 +204,37 @@ export function resolveMentions(text: string, c: Contacts): string {
 /**
  * Varre todos os grupos e monta o mapa de contatos: id->nome, quem é você
  * (fromMe) e quem está no time (config). Base para papel (me/team/client).
+ *
+ * O índice pesado (messages.jsonl + .contacts.json) é cacheado separadamente de
+ * .team.json, para que alternar alguém em "Meu time" nunca precise reler todos
+ * os históricos do disco.
  */
-let memo: { assinatura: string; valor: Contacts } | null = null;
+interface BaseContactsCache {
+  assinaturaBase: string;
+  names: Map<string, string>;
+  ownIds: Set<string>;
+  sidecar: Awaited<ReturnType<typeof readContactSidecar>>;
+}
+
+let memoBase: BaseContactsCache | null = null;
+let memoFinal: { assinaturaBase: string; assinaturaTeam: string; valor: Contacts } | null = null;
+
+async function statAssinatura(caminho: string): Promise<string> {
+  try {
+    const s = await stat(caminho);
+    return `${caminho}:${s.mtimeMs}:${s.size}`;
+  } catch {
+    return `${caminho}:-`;
+  }
+}
 
 /**
- * Retrato dos arquivos que entram no mapa (mtime e tamanho de cada um). Igual
- * ao da última montagem = nada mudou: o mapa guardado vale, sem reler os chats.
+ * Retrato dos arquivos de mensagens + sidecar (mtime e tamanho). Igual ao da
+ * última montagem = nada mudou nos chats, sem reler messages.jsonl.
  */
-async function assinaturaDosArquivos(slugs: string[]): Promise<string> {
-  const caminhos = [...slugs.map((s) => safeDataPath(s, "messages.jsonl")), CONTACTS_FILE, TEAM_FILE];
-  const partes = await Promise.all(
-    caminhos.map(async (c) => {
-      try {
-        const s = await stat(c);
-        return `${c}:${s.mtimeMs}:${s.size}`;
-      } catch {
-        return `${c}:-`;
-      }
-    }),
-  );
+async function assinaturaBaseDosArquivos(slugs: string[]): Promise<string> {
+  const caminhos = [...slugs.map((s) => safeDataPath(s, "messages.jsonl")), CONTACTS_FILE];
+  const partes = await Promise.all(caminhos.map(statAssinatura));
   return partes.join("|");
 }
 
@@ -236,64 +248,75 @@ export async function buildContacts(): Promise<Contacts> {
     /* sem dados ainda */
   }
 
-  // Quem chama só lê o mapa: o mesmo objeto pode voltar enquanto os arquivos não mudam.
-  const assinatura = await assinaturaDosArquivos(slugs);
-  if (memo?.assinatura === assinatura) return memo.valor;
+  const [assinaturaBase, assinaturaTeam] = await Promise.all([
+    assinaturaBaseDosArquivos(slugs),
+    statAssinatura(TEAM_FILE),
+  ]);
 
-  const names = new Map<string, string>();
-  const ownIds = new Set<string>();
-
-  for (const slug of slugs) {
-    let raw = "";
-    try {
-      raw = await readFile(safeDataPath(slug, "messages.jsonl"), "utf8");
-    } catch {
-      continue;
-    }
-    for (const line of raw.split("\n")) {
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      try {
-        const m = JSON.parse(trimmed) as {
-          sender?: string;
-          senderName?: string;
-          fromMe?: boolean;
-          groupJid?: string;
-        };
-        const jid = remetenteDaLinha(m) ?? "";
-        // Ignora remetentes que caíram no jid do grupo (não são pessoas).
-        if (jid.endsWith("@g.us")) continue;
-        const num = numberFromJid(jid);
-        if (!num) continue;
-        // Nome real tem prioridade sobre "Você"/número.
-        if (m.senderName && m.senderName !== "Você") names.set(num, m.senderName);
-        else if (!names.has(num)) names.set(num, m.senderName ?? num);
-        if (m.fromMe) ownIds.add(num);
-      } catch {
-        /* linha corrompida */
-      }
-    }
+  if (memoFinal?.assinaturaBase === assinaturaBase && memoFinal.assinaturaTeam === assinaturaTeam) {
+    return memoFinal.valor;
   }
 
-  // Enriquece com o sidecar do coletor (telefone real + nome melhor).
-  const sidecar = await readContactSidecar();
-  // Nomes do sidecar têm prioridade (vêm de name/notify/verifiedName do WhatsApp).
-  for (const [id, name] of sidecar.names) {
-    if (name && name !== "Você") names.set(id, name);
-    else if (!names.has(id)) names.set(id, name);
+  let base = memoBase && memoBase.assinaturaBase === assinaturaBase ? memoBase : null;
+  if (!base) {
+    const names = new Map<string, string>();
+    const ownIds = new Set<string>();
+
+    for (const slug of slugs) {
+      let raw = "";
+      try {
+        raw = await readFile(safeDataPath(slug, "messages.jsonl"), "utf8");
+      } catch {
+        continue;
+      }
+      for (const line of raw.split("\n")) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        try {
+          const m = JSON.parse(trimmed) as {
+            sender?: string;
+            senderName?: string;
+            fromMe?: boolean;
+            groupJid?: string;
+          };
+          const jid = remetenteDaLinha(m) ?? "";
+          // Ignora remetentes que caíram no jid do grupo (não são pessoas).
+          if (jid.endsWith("@g.us")) continue;
+          const num = numberFromJid(jid);
+          if (!num) continue;
+          // Nome real tem prioridade sobre "Você"/número.
+          if (m.senderName && m.senderName !== "Você") names.set(num, m.senderName);
+          else if (!names.has(num)) names.set(num, m.senderName ?? num);
+          if (m.fromMe) ownIds.add(num);
+        } catch {
+          /* linha corrompida */
+        }
+      }
+    }
+
+    // Enriquece com o sidecar do coletor (telefone real + nome melhor).
+    const sidecar = await readContactSidecar();
+    // Nomes do sidecar têm prioridade (vêm de name/notify/verifiedName do WhatsApp).
+    for (const [id, name] of sidecar.names) {
+      if (name && name !== "Você") names.set(id, name);
+      else if (!names.has(id)) names.set(id, name);
+    }
+
+    base = { assinaturaBase, names, ownIds, sidecar };
+    memoBase = base;
   }
 
   // Quem foi marcado por um id só (o LID, por exemplo) também é do time pelo outro.
-  const teamIds = timeExpandido(sidecar, await readTeam());
+  const teamIds = timeExpandido(base.sidecar, await readTeam());
   const valor: Contacts = {
-    names,
-    ownIds,
+    names: base.names,
+    ownIds: base.ownIds,
     teamIds,
-    phones: sidecar.phones,
-    lids: sidecar.lids,
-    hasSidecar: sidecar.hasSidecar,
+    phones: base.sidecar.phones,
+    lids: base.sidecar.lids,
+    hasSidecar: base.sidecar.hasSidecar,
   };
-  memo = { assinatura, valor };
+  memoFinal = { assinaturaBase, assinaturaTeam, valor };
   return valor;
 }
 

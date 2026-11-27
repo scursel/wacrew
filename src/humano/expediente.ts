@@ -39,16 +39,21 @@ function hhmmEmMin(s: string): number {
   return (h || 0) * 60 + (m || 0);
 }
 
-/** True se `agora` (no fuso de `cfg`) cai FORA da faixa configurada pro dia. */
+/** True se `agora` (no fuso de `cfg`) cai FORA da faixa configurada pro dia. Fuso inválido → false (não bloqueia). */
 export function foraDaFaixa(agora: Date, cfg: ExpedienteConfig): boolean {
-  const fmt = new Intl.DateTimeFormat('en-US', {
-    timeZone: cfg.timezone,
-    weekday: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  });
-  const parts = fmt.formatToParts(agora);
+  let parts: Intl.DateTimeFormatPart[];
+  try {
+    const fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: cfg.timezone,
+      weekday: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+    parts = fmt.formatToParts(agora);
+  } catch {
+    return false;
+  }
   const wd = parts.find((p) => p.type === 'weekday')?.value ?? 'Sun';
   let hh = Number(parts.find((p) => p.type === 'hour')?.value ?? '0');
   const mm = Number(parts.find((p) => p.type === 'minute')?.value ?? '0');
@@ -92,18 +97,23 @@ export function horaLocal(agora: Date, timezone: string): { hora: number; diaSem
   }
 }
 
-/** Offset (ms) do fuso em `instante`: local − UTC. */
+/** Offset (ms) do fuso em `instante`: local − UTC. Fuso inválido → 0 (UTC). */
 function offsetMs(instante: Date, timezone: string): number {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: timezone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  }).formatToParts(instante);
+  let parts: Intl.DateTimeFormatPart[];
+  try {
+    parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    }).formatToParts(instante);
+  } catch {
+    return 0;
+  }
   const g = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? '0');
   const h = g('hour') === 24 ? 0 : g('hour');
   const asUtc = Date.UTC(g('year'), g('month') - 1, g('day'), h, g('minute'), g('second'));

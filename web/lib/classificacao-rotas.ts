@@ -122,6 +122,7 @@ export const CLASSIFICACAO: Record<string, 'dono' | 'atendimento' | 'publico'> =
   'api/transcripts/route.ts': 'dono',
   'api/triage/route.ts': 'dono',
   'api/webhooks/route.ts': 'dono',
+  'api/whatsapp/conexao/route.ts': 'dono',
   'api/v1/agente/checkpoint/route.ts': 'publico',
   'api/v1/agente/despacho/route.ts': 'publico',
   'api/v1/agente/fila/route.ts': 'publico',

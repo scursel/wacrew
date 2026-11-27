@@ -1,5 +1,5 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { readFile } from 'node:fs/promises';
+import { writeJsonAtomic as writeJsonAtomicBase } from './json-store';
 import { GROUPS_CONFIG, SETTINGS_FILE, STATUS_FILE, TAGS_FILE, TEAM_FILE } from './paths';
 
 // ---------- Grupos ----------
@@ -171,9 +171,14 @@ export async function setTeam(ids: string[]): Promise<string[]> {
 
 // ---------- util ----------
 
-async function writeJsonAtomic(path: string, data: unknown): Promise<void> {
-  await mkdir(dirname(path), { recursive: true });
-  const tmp = join(dirname(path), `.${Date.now()}.tmp`);
-  await writeFile(tmp, `${JSON.stringify(data, null, 2)}\n`, 'utf8');
-  await rename(tmp, path);
+const filasEscrita = new Map<string, Promise<unknown>>();
+
+function writeJsonAtomic(path: string, data: unknown): Promise<void> {
+  const anterior = filasEscrita.get(path) ?? Promise.resolve();
+  const passo = anterior.then(() => writeJsonAtomicBase(path, data));
+  filasEscrita.set(
+    path,
+    passo.catch(() => {}),
+  );
+  return passo;
 }

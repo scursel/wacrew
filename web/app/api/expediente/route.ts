@@ -10,9 +10,13 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => null)) as Partial<ExpedienteWebConfig> | null;
-  if (!body || typeof body !== 'object') {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return NextResponse.json({ error: 'JSON inválido' }, { status: 400 });
   }
-  const saved = await salvarExpedienteWeb(body);
-  return NextResponse.json({ ok: true, config: saved });
+  try {
+    const saved = await salvarExpedienteWeb(body);
+    return NextResponse.json({ ok: true, config: saved });
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'dados inválidos' }, { status: 400 });
+  }
 }

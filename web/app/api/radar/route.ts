@@ -55,8 +55,12 @@ export async function POST(req: Request) {
   // "Varrer agora" — repassa pro control server do coletor.
   if (body.acao === "agora") {
     try {
-      const res = await fetch(`${CONTROL_URL}/radar`, { method: "POST" });
-      return NextResponse.json(await res.json(), { status: res.status });
+      const res = await fetch(`${CONTROL_URL}/radar`, {
+        method: "POST",
+        signal: AbortSignal.timeout(15_000),
+      });
+      const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      return NextResponse.json(data, { status: res.status });
     } catch {
       return NextResponse.json({ error: "coletor inacessível" }, { status: 502 });
     }

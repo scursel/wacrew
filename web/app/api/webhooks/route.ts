@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { type EventoWebhook, lerWebhooks, removerWebhook, salvarWebhook, testarWebhook } from '@/lib/webhooks';
+import { type EventoWebhook, lerWebhooks, removerWebhook, salvarWebhook, testarWebhook, type WebhookConfig } from '@/lib/webhooks';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -12,13 +12,18 @@ const EVENTOS_VALIDOS = new Set<EventoWebhook>([
   'csat.submitted',
 ]);
 
+function webhookPublico(w: WebhookConfig) {
+  const { secret, ...rest } = w;
+  return {
+    ...rest,
+    secretPreview: secret ? `${secret.slice(0, 6)}…` : '',
+  };
+}
+
 export async function GET() {
   const lista = await lerWebhooks();
   return NextResponse.json({
-    webhooks: lista.map((w) => ({
-      ...w,
-      secretPreview: w.secret ? `${w.secret.slice(0, 6)}…` : '',
-    })),
+    webhooks: lista.map(webhookPublico),
   });
 }
 
@@ -46,16 +51,23 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'nome, url e ao menos um evento são obrigatórios' }, { status: 400 });
   }
 
+  const criando = !(typeof body.id === 'string' && body.id.trim());
+  const informouSegredo = typeof body.secret === 'string' && body.secret.trim().length > 0;
+
   try {
     const webhook = await salvarWebhook({
       ...(typeof body.id === 'string' ? { id: body.id } : {}),
       nome,
       url,
-      ...(typeof body.secret === 'string' && body.secret.trim() ? { secret: body.secret.trim() } : {}),
+      ...(informouSegredo ? { secret: (body.secret as string).trim() } : {}),
       eventos,
       ativo: body.ativo !== false,
     });
-    return NextResponse.json({ ok: true, webhook });
+    return NextResponse.json({
+      ok: true,
+      webhook: webhookPublico(webhook),
+      ...(criando && !informouSegredo ? { secretGerado: webhook.secret } : {}),
+    });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : 'URL inválida' }, { status: 400 });
   }

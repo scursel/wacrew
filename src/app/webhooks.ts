@@ -1,5 +1,5 @@
 import { createHmac } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 
 interface WebhookConfigMinimal {
@@ -10,26 +10,43 @@ interface WebhookConfigMinimal {
   ativo: boolean;
 }
 
+const cachePorDir = new Map<string, { chave: string; lista: WebhookConfigMinimal[] }>();
+
+async function lerHooksCacheado(dataDir: string): Promise<WebhookConfigMinimal[]> {
+  const arquivo = join(dataDir, '.webhooks.json');
+  let chave: string;
+  try {
+    const s = await stat(arquivo);
+    chave = `${s.mtimeMs}:${s.size}:${s.ino}`;
+  } catch {
+    cachePorDir.delete(dataDir);
+    return [];
+  }
+  const hit = cachePorDir.get(dataDir);
+  if (hit && hit.chave === chave) return hit.lista;
+  try {
+    const raw = JSON.parse(await readFile(arquivo, 'utf8')) as unknown;
+    const lista = Array.isArray(raw) ? (raw as WebhookConfigMinimal[]) : [];
+    cachePorDir.set(dataDir, { chave, lista });
+    return lista;
+  } catch {
+    return [];
+  }
+}
+
 export async function dispararWebhookCollector(
   dataDir: string,
   evento: 'message.received' | 'message.sent',
   dados: Record<string, unknown>,
 ): Promise<void> {
-  let hooks: WebhookConfigMinimal[] = [];
-  try {
-    const raw = JSON.parse(await readFile(join(dataDir, '.webhooks.json'), 'utf8')) as unknown;
-    if (Array.isArray(raw)) {
-      hooks = (raw as WebhookConfigMinimal[]).filter(
-        (w) =>
-          w?.ativo &&
-          typeof w.url === 'string' &&
-          Array.isArray(w.eventos) &&
-          w.eventos.includes(evento),
-      );
-    }
-  } catch {
-    return;
-  }
+  const todos = await lerHooksCacheado(dataDir);
+  const hooks = todos.filter(
+    (w) =>
+      w?.ativo &&
+      typeof w.url === 'string' &&
+      Array.isArray(w.eventos) &&
+      w.eventos.includes(evento),
+  );
   if (hooks.length === 0) return;
 
   const payload = JSON.stringify({ evento, timestamp: new Date().toISOString(), dados });

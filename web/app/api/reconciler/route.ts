@@ -39,7 +39,10 @@ export async function POST(req: Request) {
   // "Sincronizar agora" — repassa pro control server do coletor.
   if (body.acao === "agora") {
     try {
-      const res = await fetch(`${CONTROL_URL}/reconcile`, { method: "POST" });
+      const res = await fetch(`${CONTROL_URL}/reconcile`, {
+        method: "POST",
+        signal: AbortSignal.timeout(15_000),
+      });
       const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
       return NextResponse.json(data, { status: res.status });
     } catch {
@@ -47,9 +50,15 @@ export async function POST(req: Request) {
     }
   }
 
-  if (typeof body.intervaloMin === "number" && body.intervaloMin >= 1) {
-    await writeJsonAtomic(CONFIG(), { intervaloMin: Math.round(body.intervaloMin) });
-    return NextResponse.json({ ok: true, intervaloMin: Math.round(body.intervaloMin) });
+  if (
+    typeof body.intervaloMin === "number" &&
+    Number.isFinite(body.intervaloMin) &&
+    body.intervaloMin >= 1 &&
+    body.intervaloMin <= 10080
+  ) {
+    const valor = Math.round(body.intervaloMin);
+    await writeJsonAtomic(CONFIG(), { intervaloMin: valor });
+    return NextResponse.json({ ok: true, intervaloMin: valor });
   }
 
   return NextResponse.json({ error: "ação inválida" }, { status: 400 });

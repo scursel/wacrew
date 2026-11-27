@@ -1,5 +1,6 @@
-import { writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { mkdir, rename, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 
 export type ConnectionState = 'open' | 'connecting' | 'qr' | 'close' | 'logged_out' | 'unknown';
 
@@ -61,6 +62,10 @@ export class StatusStore {
       watchedCount: this.watchedCount,
       updatedAt: new Date().toISOString(),
     };
-    await writeFile(this.path, JSON.stringify(status, null, 2), 'utf8');
+    const dir = dirname(this.path);
+    await mkdir(dir, { recursive: true });
+    const tmp = join(dir, `.collector-status.${process.pid}.${randomUUID()}.tmp`);
+    await writeFile(tmp, JSON.stringify(status, null, 2), 'utf8');
+    await rename(tmp, this.path);
   }
 }
