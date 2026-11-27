@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { credenciaisDoDono, metaDoPainel, SESSION_COOKIE } from "@/lib/equipe/autenticar";
-import { assinar, assinarBaloes, nomeDeQuemEnvia } from "@/lib/equipe/assinatura";
+import { assinar, assinarBaloes, deveAssinar, nomeDeQuemEnvia } from "@/lib/equipe/assinatura";
 import { chaveDeSessao } from "@/lib/equipe/sessao";
 import { DONO } from "@/lib/equipe/atribuicoes";
 import { registrarResposta } from "@/lib/equipe/quem";
@@ -57,9 +57,9 @@ export async function POST(req: Request) {
         );
 
   try {
-    // A assinatura é só de quem manda pelo painel; Basic (MCP/plantão/sync) e
-    // `humano: true` não têm `meta` e saem como sempre.
-    const nome = meta ? await nomeDeQuemEnvia(meta.usuario) : null;
+    // A assinatura é só de quem manda pelo painel com assinatura ativa e departamento;
+    // Basic (MCP/plantão/sync) e `humano: true` não têm `meta` e saem sem assinatura.
+    const nome = meta && (await deveAssinar(meta.usuario)) ? await nomeDeQuemEnvia(meta.usuario) : null;
     const baloesEnviados = nome ? assinarBaloes(baloes, nome) : baloes;
     const textoEnviado = nome ? assinar(text, nome) : text;
     const res = await fetch(`${CONTROL_URL}/send`, {

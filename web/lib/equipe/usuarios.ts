@@ -19,6 +19,8 @@ export interface Usuario {
   copilotoLiberado?: boolean;
   restringirDepartamentos?: boolean;
   assinarMensagens?: boolean;
+  /** Texto próprio de assinatura (quando vazio, usa o nome da conta). */
+  assinatura?: string;
 }
 
 export type UsuarioPublico = Omit<Usuario, 'senha'>;

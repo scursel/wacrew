@@ -21,9 +21,46 @@ export function alterarDepartamentos<T>(fn: (l: Departamento[]) => T | Promise<T
   fila = passo.catch(() => {}); return passo;
 }
 export function departamentosDe(lista: Departamento[], login: string): string[] { return lista.filter((d) => d.membros.includes(login)).map((d) => d.id); }
-const configFile = () => join(DATA_DIR, '.equipe', 'config.json');
-export async function lerNomeDono(): Promise<string> {
-  try { const x = JSON.parse(await readFile(configFile(), 'utf8')); if (typeof x.nomeDono === 'string' && x.nomeDono.trim()) return x.nomeDono.trim(); } catch { /* usa padrão */ }
-  return process.env.PANEL_USER ?? 'Operador';
+export interface ConfigDono {
+  nomeDono: string;
+  assinarMensagens: boolean;
 }
-export async function gravarNomeDono(nome: string): Promise<void> { await writeJsonAtomic(configFile(), { nomeDono: nome.trim() }); }
+
+const configFile = () => join(DATA_DIR, '.equipe', 'config.json');
+
+export async function lerConfigDono(): Promise<ConfigDono> {
+  const padrao = process.env.PANEL_USER ?? 'Operador';
+  try {
+    const x = JSON.parse(await readFile(configFile(), 'utf8')) as { nomeDono?: unknown; assinarMensagens?: unknown };
+    return {
+      nomeDono: typeof x.nomeDono === 'string' && x.nomeDono.trim() ? x.nomeDono.trim() : padrao,
+      assinarMensagens: x.assinarMensagens === true,
+    };
+  } catch {
+    return { nomeDono: padrao, assinarMensagens: false };
+  }
+}
+
+export async function lerNomeDono(): Promise<string> {
+  return (await lerConfigDono()).nomeDono;
+}
+
+export async function gravarConfigDono(patch: { nomeDono?: string; assinarMensagens?: boolean }): Promise<void> {
+  let atual: { nomeDono?: string; assinarMensagens?: boolean } = {};
+  try {
+    const parsed = JSON.parse(await readFile(configFile(), 'utf8')) as { nomeDono?: unknown; assinarMensagens?: unknown };
+    if (typeof parsed.nomeDono === 'string') atual.nomeDono = parsed.nomeDono;
+    if (typeof parsed.assinarMensagens === 'boolean') atual.assinarMensagens = parsed.assinarMensagens;
+  } catch {
+    /* arquivo ainda não existe */
+  }
+  const prox = {
+    nomeDono: patch.nomeDono !== undefined ? patch.nomeDono.trim() : (atual.nomeDono ?? ''),
+    assinarMensagens: patch.assinarMensagens !== undefined ? patch.assinarMensagens : (atual.assinarMensagens === true),
+  };
+  await writeJsonAtomic(configFile(), prox);
+}
+
+export async function gravarNomeDono(nome: string): Promise<void> {
+  await gravarConfigDono({ nomeDono: nome });
+}

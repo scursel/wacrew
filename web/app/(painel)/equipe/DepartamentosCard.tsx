@@ -12,9 +12,7 @@ export function DepartamentosCard({ departamentos, usuarios, nomeDono, rodar }: 
 }) {
   const [nome, setNome] = useState("");
   const [descricao, setDescricao] = useState("");
-  const [assinatura, setAssinatura] = useState(nomeDono);
   const [criando, setCriando] = useState(false);
-  const [salvando, setSalvando] = useState(false);
 
   async function criar(e: React.FormEvent) {
     e.preventDefault();
@@ -29,23 +27,13 @@ export function DepartamentosCard({ departamentos, usuarios, nomeDono, rodar }: 
     }
   }
 
-  async function salvarAssinatura(e: React.FormEvent) {
-    e.preventDefault();
-    setSalvando(true);
-    try {
-      await rodar({ acao: "nome-dono", nome: assinatura.trim() });
-    } finally {
-      setSalvando(false);
-    }
-  }
-
   return (
     <Card id="departamentos" titulo="Departamentos" largura="inteiro">
-      <p className="text-[13px] text-fg-dim">Organize as conversas e escolha quem participa de cada departamento.</p>
+      <p className="text-[13px] text-fg-dim">Organize as conversas e escolha quem participa de cada departamento. Só quem participa de um departamento pode ativar assinatura nas mensagens.</p>
       <div className="mt-4 space-y-4">
         {departamentos.length === 0 && <p className="text-[13px] text-fg-faint">Nenhum departamento criado ainda.</p>}
         {departamentos.map((departamento) => (
-          <DepartamentoItem key={departamento.id} departamento={departamento} usuarios={usuarios} rodar={rodar} />
+          <DepartamentoItem key={departamento.id} departamento={departamento} usuarios={usuarios} nomeDono={nomeDono} rodar={rodar} />
         ))}
       </div>
       <form onSubmit={(e) => void criar(e)} className="mt-5 flex flex-wrap items-end gap-3 border-t border-line pt-4">
@@ -57,19 +45,14 @@ export function DepartamentosCard({ departamentos, usuarios, nomeDono, rodar }: 
         </Field>
         <Button type="submit" size="sm" loading={criando} disabled={!nome.trim()}>Criar departamento</Button>
       </form>
-      <form onSubmit={(e) => void salvarAssinatura(e)} className="mt-5 flex flex-wrap items-end gap-3 border-t border-line pt-4">
-        <Field label="Seu nome na assinatura" htmlFor="nome-assinatura" hint="Aparece nas mensagens enviadas pelo painel." className="min-w-[180px] flex-1">
-          <Input id="nome-assinatura" value={assinatura} onChange={(e) => setAssinatura(e.target.value)} />
-        </Field>
-        <Button type="submit" size="sm" variant="subtle" loading={salvando}>Salvar assinatura</Button>
-      </form>
     </Card>
   );
 }
 
-function DepartamentoItem({ departamento, usuarios, rodar }: {
+function DepartamentoItem({ departamento, usuarios, nomeDono, rodar }: {
   departamento: Departamento;
   usuarios: UsuarioPublico[];
+  nomeDono: string;
   rodar: RodarComando;
 }) {
   const [editando, setEditando] = useState(false);
@@ -125,16 +108,18 @@ function DepartamentoItem({ departamento, usuarios, rodar }: {
       )}
       <fieldset disabled={ocupado} className="mt-4">
         <legend className="text-[12.5px] font-medium text-fg-dim">Membros</legend>
-        {ativos.length === 0 ? <p className="mt-2 text-[13px] text-fg-faint">Nenhuma conta ativa.</p> : (
-          <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2">
-            {ativos.map((u) => (
-              <label key={u.login} className="flex items-center gap-2 text-[13px] text-fg">
-                <input type="checkbox" checked={departamento.membros.includes(u.login)} onChange={(e) => void mudarMembro(u.login, e.target.checked)} />
-                {u.nome} <span className="text-fg-faint">@{u.login}</span>
-              </label>
-            ))}
-          </div>
-        )}
+        <div className="mt-2 flex flex-wrap gap-x-5 gap-y-2">
+          <label className="flex items-center gap-2 text-[13px] text-fg">
+            <input type="checkbox" checked={departamento.membros.includes("@dono")} onChange={(e) => void mudarMembro("@dono", e.target.checked)} />
+            {nomeDono} <span className="text-fg-faint">(você)</span>
+          </label>
+          {ativos.map((u) => (
+            <label key={u.login} className="flex items-center gap-2 text-[13px] text-fg">
+              <input type="checkbox" checked={departamento.membros.includes(u.login)} onChange={(e) => void mudarMembro(u.login, e.target.checked)} />
+              {u.nome} <span className="text-fg-faint">@{u.login}</span>
+            </label>
+          ))}
+        </div>
       </fieldset>
       <label className="mt-3 flex cursor-pointer items-center gap-2 border-t border-line pt-3 text-[12.5px] text-fg-dim">
         <input

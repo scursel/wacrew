@@ -6,6 +6,7 @@ export interface DadosEquipe {
   usuarios: UsuarioPublico[];
   departamentos: Departamento[];
   nomeDono: string;
+  donoAssinar: boolean;
 }
 
 /** Roda um comando da tela de equipe; devolve a resposta ou null se falhou (o erro já foi avisado). */

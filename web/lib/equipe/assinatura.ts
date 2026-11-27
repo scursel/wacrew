@@ -1,4 +1,5 @@
-import { lerNomeDono } from './departamentos';
+import { DONO } from './atribuicoes';
+import { type Departamento, departamentosDe, lerConfigDono, lerDepartamentos, lerNomeDono } from './departamentos';
 import { acharUsuario } from './usuarios';
 
 /**
@@ -20,16 +21,31 @@ export function semAssinatura(texto: string): string {
   return texto.replace(ASSINATURA, '');
 }
 
-/** Nome que assina o envio: o dono pelo painel não é conta de `usuarios.json`. */
-export async function nomeDeQuemEnvia(usuario: string, nomeDono: () => Promise<string> = lerNomeDono): Promise<string> {
-  if (usuario === process.env.PANEL_USER) return nomeDono();
-  const u = await acharUsuario(usuario);
-  return u?.nome || usuario;
+function ehDono(usuario: string): boolean {
+  return usuario === DONO || (Boolean(process.env.PANEL_USER) && usuario === process.env.PANEL_USER);
 }
 
-/** True por padrão; só desativa quando `assinarMensagens === false` na conta do atendente. */
+/** O usuário pertence a pelo menos um departamento? Sem departamento, não pode assinar. */
+export async function usuarioTemDepartamento(usuario: string, deps?: Departamento[]): Promise<boolean> {
+  const lista = deps ?? (await lerDepartamentos());
+  const chave = ehDono(usuario) ? DONO : usuario;
+  return departamentosDe(lista, chave).length > 0;
+}
+
+/** Nome/texto que assina o envio: do próprio usuário (ou do dono pelo painel). */
+export async function nomeDeQuemEnvia(usuario: string, nomeDono: () => Promise<string> = lerNomeDono): Promise<string> {
+  if (ehDono(usuario)) return nomeDono();
+  const u = await acharUsuario(usuario);
+  return u?.assinatura?.trim() || u?.nome || usuario;
+}
+
+/**
+ * Só assina quando o usuário pertence a pelo menos um departamento E a assinatura
+ * está ligada na conta dele (dono: desligada por padrão; atendente: ligada por padrão).
+ */
 export async function deveAssinar(usuario: string): Promise<boolean> {
-  if (usuario === process.env.PANEL_USER) return true;
+  if (!(await usuarioTemDepartamento(usuario))) return false;
+  if (ehDono(usuario)) return (await lerConfigDono()).assinarMensagens === true;
   const u = await acharUsuario(usuario);
   return u?.assinarMensagens !== false;
 }

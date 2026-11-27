@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { mensagemDe, pedirJson, useCarregar } from "@/app/components/pedirJson";
-import { Aviso, Button, CabecalhoPagina, CorpoPagina, Grade12, Icone } from "@/app/components/ui";
+import { Aviso, Button, CabecalhoPagina, Card, CorpoPagina, Field, Grade12, Icone, Input } from "@/app/components/ui";
 import { ContaCard } from "./ContaCard";
 import { ContasCard } from "./ContasCard";
 import { DepartamentosCard } from "./DepartamentosCard";
@@ -140,11 +140,91 @@ export function EquipeView() {
                 />
               )}
             </div>
+            {dados && (
+              <PerfilDonoCard
+                key={`${dados.nomeDono}-${dados.donoAssinar}`}
+                nomeDono={dados.nomeDono}
+                donoAssinar={dados.donoAssinar}
+                departamentos={dados.departamentos}
+                rodar={rodar}
+              />
+            )}
             {dados && <DepartamentosCard departamentos={dados.departamentos} usuarios={usuarios} nomeDono={dados.nomeDono} rodar={rodar} />}
           </Grade12>
         )}
       </CorpoPagina>
     </>
+  );
+}
+
+/** Perfil e assinatura do dono do painel: só permite assinar quando participa de algum departamento. */
+function PerfilDonoCard({
+  nomeDono,
+  donoAssinar,
+  departamentos,
+  rodar,
+}: {
+  nomeDono: string;
+  donoAssinar: boolean;
+  departamentos: DadosEquipe["departamentos"];
+  rodar: RodarComando;
+}) {
+  const [nome, setNome] = useState(nomeDono);
+  const [salvando, setSalvando] = useState(false);
+  const meusDeps = departamentos.filter((d) => d.membros.includes("@dono"));
+  const temDepartamento = meusDeps.length > 0;
+
+  async function salvar(e: React.FormEvent) {
+    e.preventDefault();
+    setSalvando(true);
+    try {
+      await rodar({ acao: "nome-dono", nome: nome.trim() });
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function alternarAssinatura(marcado: boolean) {
+    setSalvando(true);
+    try {
+      await rodar({ acao: "nome-dono", nome: nome.trim(), assinarMensagens: marcado });
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <Card id="dono" titulo="Sua conta (Dono)" largura="inteiro">
+      <p className="text-[13px] text-fg-dim">
+        Departamentos: <strong className="font-medium text-fg">{meusDeps.map((d) => d.nome).join(", ") || "Nenhum"}</strong>
+      </p>
+      <div className="mt-4 flex flex-col gap-3">
+        <label className={`flex items-center justify-between gap-3 rounded-control border border-line bg-surface-2 p-3 text-[12.5px] ${temDepartamento ? "cursor-pointer text-fg" : "cursor-not-allowed text-fg-faint"}`}>
+          <span>
+            Assinar suas mensagens pelo painel (*{nome.trim() || nomeDono}:*)
+            {!temDepartamento && (
+              <span className="mt-0.5 block text-[11.5px] text-fg-faint">
+                Disponível apenas quando você participa de um departamento (marque você em Departamentos abaixo).
+              </span>
+            )}
+          </span>
+          <input
+            type="checkbox"
+            checked={temDepartamento && donoAssinar}
+            disabled={salvando || !temDepartamento}
+            onChange={(e) => void alternarAssinatura(e.target.checked)}
+          />
+        </label>
+        <form onSubmit={(e) => void salvar(e)} className="flex flex-wrap items-end gap-3">
+          <Field label="Seu nome / assinatura" htmlFor="dono-nome-assinatura" hint="Usado para identificar você e na assinatura quando ativada." className="min-w-[200px] flex-1">
+            <Input id="dono-nome-assinatura" value={nome} onChange={(e) => setNome(e.target.value)} />
+          </Field>
+          <Button type="submit" size="sm" variant="subtle" loading={salvando}>
+            Salvar
+          </Button>
+        </form>
+      </div>
+    </Card>
   );
 }
 

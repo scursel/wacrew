@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { credenciaisDoDono, metaDoPainel, SESSION_COOKIE } from "@/lib/equipe/autenticar";
-import { assinar, nomeDeQuemEnvia } from "@/lib/equipe/assinatura";
+import { assinar, deveAssinar, nomeDeQuemEnvia } from "@/lib/equipe/assinatura";
 import { chaveDeSessao } from "@/lib/equipe/sessao";
 import { DONO } from "@/lib/equipe/atribuicoes";
 import { registrarResposta } from "@/lib/equipe/quem";
@@ -64,10 +64,11 @@ export async function POST(req: Request) {
   const abs = join(dir, randomUUID());
   await writeFile(abs, Buffer.from(await file.arrayBuffer()));
 
-  // Sem legenda, a assinatura vira a legenda; máquina (Basic) e `humano` não têm `meta`.
+  // Só assina se quem envia pelo painel tem departamento e assinatura ligada.
   const legenda =
     typeof caption === "string" && caption.trim() ? caption.trim() : "";
-  const legendaEnviada = meta ? assinar(legenda, await nomeDeQuemEnvia(meta.usuario)) : legenda;
+  const legendaEnviada =
+    meta && (await deveAssinar(meta.usuario)) ? assinar(legenda, await nomeDeQuemEnvia(meta.usuario)) : legenda;
 
   try {
     const res = await fetch(`${CONTROL_URL}/send-media`, {

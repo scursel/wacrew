@@ -1,8 +1,8 @@
 import { gerarSenha, hashSenha } from './senha';
 import { alterarUsuarios, lerUsuarios, LOGIN_RE, publico, type Usuario, type UsuarioPublico } from './usuarios';
 import { apagarVisto } from './visto';
-import { alterarDepartamentos, gravarNomeDono } from './departamentos';
-import { liberarLogin, limparDepartamento } from './atribuicoes';
+import { alterarDepartamentos, departamentosDe, gravarConfigDono, lerDepartamentos } from './departamentos';
+import { DONO, liberarLogin, limparDepartamento } from './atribuicoes';
 
 export type Comando =
   | { acao: 'criar'; login: string; nome: string; senha?: string }
@@ -13,6 +13,7 @@ export type Comando =
       copilotoLiberado?: boolean;
       restringirDepartamentos?: boolean;
       assinarMensagens?: boolean;
+      assinatura?: string;
     }
   | { acao: 'senha'; login: string; senha?: string }
   | { acao: 'ativo'; login: string; ativo: boolean }
@@ -21,7 +22,7 @@ export type Comando =
   | { acao: 'dep-editar'; id: string; nome: string; descricao?: string; roundRobin?: boolean }
   | { acao: 'dep-apagar'; id: string }
   | { acao: 'dep-membros'; id: string; membros: string[] }
-  | { acao: 'nome-dono'; nome: string };
+  | { acao: 'nome-dono'; nome: string; assinarMensagens?: boolean };
 
 const SENHA_MIN = 8;
 
@@ -57,7 +58,7 @@ function validarComando(c: unknown): asserts c is Comando {
       case 'dep-editar': return typeof x.id === 'string' && typeof x.nome === 'string' && (x.descricao === undefined || typeof x.descricao === 'string');
       case 'dep-apagar': return typeof x.id === 'string';
       case 'dep-membros': return typeof x.id === 'string' && Array.isArray(x.membros) && x.membros.every((s) => typeof s === 'string');
-      case 'nome-dono': return typeof x.nome === 'string';
+      case 'nome-dono': return typeof x.nome === 'string' && (x.assinarMensagens === undefined || typeof x.assinarMensagens === 'boolean');
       default:
         return true;
     }
@@ -88,7 +89,19 @@ export async function executar(
   agora = new Date(),
 ): Promise<{ usuario?: UsuarioPublico; senhaGerada?: string }> {
   validarComando(c);
-  if (c.acao === 'nome-dono') { await gravarNomeDono(c.nome); return {}; }
+  if (c.acao === 'nome-dono') {
+    if (c.assinarMensagens === true) {
+      const deps = await lerDepartamentos();
+      if (departamentosDe(deps, DONO).length === 0) {
+        throw new Error('entre em um departamento antes de ativar a assinatura');
+      }
+    }
+    await gravarConfigDono({
+      nomeDono: c.nome,
+      ...(typeof c.assinarMensagens === 'boolean' ? { assinarMensagens: c.assinarMensagens } : {}),
+    });
+    return {};
+  }
   if (c.acao === 'dep-criar' || c.acao === 'dep-editar') {
     const nome = c.nome.trim();
     if (!nome) throw new Error('nome é obrigatório');
@@ -116,7 +129,7 @@ export async function executar(
   if (c.acao === 'dep-membros') {
     const membros = [...new Set(c.membros.map((m) => m.trim().toLowerCase()))];
     const usuarios = await lerUsuarios();
-    const ausente = membros.find((m) => !usuarios.some((u) => u.login === m));
+    const ausente = membros.find((m) => m !== DONO && !usuarios.some((u) => u.login === m));
     if (ausente !== undefined) throw new Error(`conta inexistente: ${ausente}`);
     await alterarDepartamentos((lista) => { const d = lista.find((x) => x.id === c.id); if (!d) throw new Error('departamento inexistente'); d.membros = membros; });
     return {};
@@ -171,6 +184,13 @@ export async function executar(
     return {};
   }
 
+  if (c.acao === 'editar' && c.assinarMensagens === true) {
+    const deps = await lerDepartamentos();
+    if (departamentosDe(deps, login).length === 0) {
+      throw new Error('adicione a conta a um departamento antes de ativar a assinatura');
+    }
+  }
+
   const usuario = await alterarUsuarios((lista) => {
     const u = achar(lista, login);
     if (c.acao === 'editar') {
@@ -180,6 +200,11 @@ export async function executar(
       if (typeof c.copilotoLiberado === 'boolean') u.copilotoLiberado = c.copilotoLiberado;
       if (typeof c.restringirDepartamentos === 'boolean') u.restringirDepartamentos = c.restringirDepartamentos;
       if (typeof c.assinarMensagens === 'boolean') u.assinarMensagens = c.assinarMensagens;
+      if (typeof c.assinatura === 'string') {
+        const limpa = c.assinatura.trim();
+        if (limpa) u.assinatura = limpa;
+        else delete u.assinatura;
+      }
     } else if (c.acao === 'ativo') {
       u.ativo = c.ativo;
       u.versao += 1;

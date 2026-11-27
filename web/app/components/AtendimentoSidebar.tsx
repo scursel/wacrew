@@ -76,7 +76,9 @@ export function AtendimentoSidebar({ nome, naoLidas }: { nome: string; naoLidas:
 
   const [perfilAberto, setPerfilAberto] = useState(false);
   const [perfilNome, setPerfilNome] = useState(nome);
-  const [assinarMsgs, setAssinarMsgs] = useState(true);
+  const [perfilAssinatura, setPerfilAssinatura] = useState("");
+  const [temDepartamento, setTemDepartamento] = useState(false);
+  const [assinarMsgs, setAssinarMsgs] = useState(false);
   const [senhaAtual, setSenhaAtual] = useState("");
   const [novaSenha, setNovaSenha] = useState("");
   const [perfilSalvando, setPerfilSalvando] = useState(false);
@@ -179,8 +181,10 @@ export function AtendimentoSidebar({ nome, naoLidas }: { nome: string; naoLidas:
     try {
       const r = await fetch("/api/atendimento/perfil", { cache: "no-store" });
       if (!r.ok) return;
-      const d = (await r.json()) as { nome?: string; assinarMensagens?: boolean };
+      const d = (await r.json()) as { nome?: string; assinatura?: string; temDepartamento?: boolean; assinarMensagens?: boolean };
       if (d.nome) setPerfilNome(d.nome);
+      if (typeof d.assinatura === "string") setPerfilAssinatura(d.assinatura);
+      if (typeof d.temDepartamento === "boolean") setTemDepartamento(d.temDepartamento);
       if (typeof d.assinarMensagens === "boolean") setAssinarMsgs(d.assinarMensagens);
     } catch {
       /* usa valores locais */
@@ -198,7 +202,8 @@ export function AtendimentoSidebar({ nome, naoLidas }: { nome: string; naoLidas:
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           nome: perfilNome.trim(),
-          assinarMensagens: assinarMsgs,
+          assinatura: perfilAssinatura.trim(),
+          assinarMensagens: temDepartamento && assinarMsgs,
           ...(novaSenha ? { senhaAtual, novaSenha } : {}),
         }),
       });
@@ -501,11 +506,33 @@ export function AtendimentoSidebar({ nome, naoLidas }: { nome: string; naoLidas:
               />
             </Field>
 
-            <label className="flex cursor-pointer items-center justify-between gap-3 rounded-control border border-line bg-surface-2 px-3 py-2 text-[13px] text-fg">
-              <span>Assinar mensagens (*{perfilNome || nome}:*)</span>
+            <Field label="Texto da assinatura (opcional)" htmlFor="atend-perfil-assinatura">
+              <Input
+                id="atend-perfil-assinatura"
+                value={perfilAssinatura}
+                onChange={(e) => setPerfilAssinatura(e.target.value)}
+                placeholder={perfilNome || nome}
+                disabled={!temDepartamento}
+              />
+            </Field>
+
+            <label
+              className={`flex items-center justify-between gap-3 rounded-control border border-line bg-surface-2 px-3 py-2 text-[13px] ${
+                temDepartamento ? "cursor-pointer text-fg" : "cursor-not-allowed text-fg-faint"
+              }`}
+            >
+              <span>
+                Assinar mensagens (*{perfilAssinatura.trim() || perfilNome || nome}:*)
+                {!temDepartamento && (
+                  <span className="mt-0.5 block text-[11.5px] text-fg-faint">
+                    Disponível apenas quando você participa de um departamento.
+                  </span>
+                )}
+              </span>
               <input
                 type="checkbox"
-                checked={assinarMsgs}
+                checked={temDepartamento && assinarMsgs}
+                disabled={!temDepartamento}
                 onChange={(e) => setAssinarMsgs(e.target.checked)}
               />
             </label>

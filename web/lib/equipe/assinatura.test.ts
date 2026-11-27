@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 let tmp: string;
 let mod: typeof import('./assinatura');
 let usuarios: typeof import('./usuarios');
+let departamentos: typeof import('./departamentos');
 const PANEL = process.env.PANEL_USER;
 
 beforeAll(async () => {
@@ -14,6 +15,7 @@ beforeAll(async () => {
   process.env.WAC_DATA_DIR = join(tmp, 'data');
   mod = await import('./assinatura');
   usuarios = await import('./usuarios');
+  departamentos = await import('./departamentos');
 });
 
 afterAll(async () => {
@@ -73,5 +75,39 @@ describe('nomeDeQuemEnvia', () => {
     });
     expect(await mod.nomeDeQuemEnvia('ana')).toBe('Ana');
     expect(await mod.nomeDeQuemEnvia('bia')).toBe('bia');
+  });
+
+  it('atendente com assinatura própria usa o texto configurado', async () => {
+    await usuarios.alterarUsuarios((l) => {
+      const u = l.find((x) => x.login === 'ana');
+      if (u) u.assinatura = 'Ana · Financeiro';
+    });
+    expect(await mod.nomeDeQuemEnvia('ana')).toBe('Ana · Financeiro');
+  });
+});
+
+describe('deveAssinar (exige departamento)', () => {
+  it('usuário ou dono sem departamento nunca assina', async () => {
+    process.env.PANEL_USER = 'chefe';
+    await departamentos.gravarConfigDono({ nomeDono: 'Financeiro Gala', assinarMensagens: true });
+    await departamentos.alterarDepartamentos((l) => {
+      l.length = 0;
+    });
+    expect(await mod.deveAssinar('chefe')).toBe(false);
+    expect(await mod.deveAssinar('ana')).toBe(false);
+  });
+
+  it('só assina quando participa de departamento e a assinatura está ligada', async () => {
+    process.env.PANEL_USER = 'chefe';
+    await departamentos.alterarDepartamentos((l) => {
+      l.length = 0;
+      l.push({ id: 'fin', nome: 'Financeiro', descricao: '', membros: ['@dono', 'ana'] });
+    });
+    await departamentos.gravarConfigDono({ nomeDono: 'Gabriel', assinarMensagens: false });
+    expect(await mod.deveAssinar('chefe')).toBe(false);
+    await departamentos.gravarConfigDono({ assinarMensagens: true });
+    expect(await mod.deveAssinar('chefe')).toBe(true);
+    expect(await mod.deveAssinar('ana')).toBe(true);
+    expect(await mod.deveAssinar('bia')).toBe(false);
   });
 });
