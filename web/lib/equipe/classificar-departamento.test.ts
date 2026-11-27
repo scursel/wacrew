@@ -79,6 +79,8 @@ describe('montarPedidoDepartamento', () => {
     expect(texto).toContain('dúvidas e problemas técnicos');
     expect(texto).toContain('meu boleto veio errado');
     expect(texto).toMatch(/JSON/);
+    // Resumo é só do botão: a classificação não pede (nem grava) resumo.
+    expect(texto).not.toMatch(/resumo/i);
   });
 });
 
@@ -188,10 +190,10 @@ describe('classificarPendentes', () => {
   });
 });
 
-describe('resumo de carona', () => {
+describe('resumo pelo botão', () => {
   const msg = (id: string, texto: string) => ({ id, timestamp: '2026-11-25T10:00:00.000Z', fromMe: false, sender: '5511999@s.whatsapp.net', senderName: 'Fulano', type: 'text', text: texto });
 
-  it('a mesma chamada da pré-seleção guarda o resumo, sem chamada a mais', async () => {
+  it('classificarPendentes não grava resumo, mesmo se o modelo devolver um', async () => {
     escolha.destino = { via: '9router', baseUrl: 'http://9r.test/v1', chave: 'chave-9r', modelo: 'leve' };
     const fetchMock = respostaIA({ departamento: 'financeiro', resumo: 'Cliente quer a segunda via do boleto.' });
     vi.stubGlobal('fetch', fetchMock);
@@ -201,7 +203,7 @@ describe('resumo de carona', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const { lerResumos } = await import('../resumo-conversa');
-    expect((await lerResumos())['grupo-resumo']?.texto).toBe('Cliente quer a segunda via do boleto.');
+    expect((await lerResumos())['grupo-resumo']).toBeUndefined();
   });
 
   it('Atualizar refaz só o resumo pelo 9router; conteúdo em partes é aceito', async () => {

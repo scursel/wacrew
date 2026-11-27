@@ -13,6 +13,7 @@ import { type Departamento, lerDepartamentos } from './departamentos';
  * Pré-seleção de departamento pela IA. Roda em segundo plano: uma conversa em
  * espera, sem departamento e ainda não tentada, ganha uma sugestão. Falha ou
  * ausência da IA nunca bloqueia nada: a conversa só fica sem departamento.
+ * Resumo é outra coisa: só nasce do botão (resumirConversa), nunca daqui.
  */
 
 const BASE_OPENROUTER = 'https://openrouter.ai/api/v1';
@@ -20,12 +21,10 @@ const N_HISTORICO = 30;
 const MAX_PARALELO = 3;
 const TIMEOUT_MS = 20_000;
 
-const INSTRUCOES = `Você classifica uma conversa de WhatsApp de cliente em um dos departamentos da empresa
-e escreve um resumo curto dela.
+const INSTRUCOES = `Você classifica uma conversa de WhatsApp de cliente em um dos departamentos da empresa.
 departamento: use SOMENTE os ids da lista. Se nenhum departamento se encaixa com clareza, use null.
-${INSTRUCAO_RESUMO}
 
-Responda SÓ JSON: {"departamento": "<id>" ou null, "resumo": "<texto>"}`;
+Responda SÓ JSON: {"departamento": "<id>" ou null}`;
 
 const INSTRUCOES_SO_RESUMO = `Você resume uma conversa de WhatsApp de cliente.
 ${INSTRUCAO_RESUMO}
@@ -110,9 +109,6 @@ async function classificarUm(slug: string, deps: Departamento[], destino: Destin
     const json = await lerJson(res);
     const departamento = lerDepartamento(json, deps);
     await registrar(slug, { tipo: 'sugestao', departamento });
-    // Resumo de carona: a mesma leitura, nenhuma chamada a mais.
-    const resumo = limparResumo((json as { resumo?: unknown } | null)?.resumo);
-    if (resumo) await salvarResumo(slug, resumo);
   } catch {
     // Falha da IA não bloqueia a fila: a conversa segue sem departamento e tenta de novo depois da espera.
     falhouEm.set(slug, Date.now());

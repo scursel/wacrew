@@ -35,6 +35,7 @@ function Secao({
   fim,
   aberta,
   onAlternar,
+  manterMontado = false,
   children,
 }: {
   id: IdSecao;
@@ -42,6 +43,8 @@ function Secao({
   fim?: ReactNode;
   aberta: boolean;
   onAlternar: (id: IdSecao) => void;
+  /** Mantém o conteúdo montado (só escondido) para um gatilho externo não se perder. */
+  manterMontado?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -56,7 +59,11 @@ function Secao({
         {titulo}
         {fim !== undefined && <span className="ml-auto font-normal text-fg-faint">{fim}</span>}
       </button>
-      {aberta && <div className="px-5 pb-5">{children}</div>}
+      {(aberta || manterMontado) && (
+        <div className="px-5 pb-5" hidden={!aberta}>
+          {children}
+        </div>
+      )}
     </section>
   );
 }
@@ -214,6 +221,7 @@ export function PainelCliente({
           fim={qtdResumos !== null && qtdResumos > 0 ? <span className="font-mono tabular-nums">{qtdResumos}</span> : undefined}
           aberta={abertas.resumo}
           onAlternar={alternar}
+          manterMontado
         >
           <ResumoConversa slug={dados.slug} gatilhoGerar={pedidoResumo} onQuantidade={setQtdResumos} />
         </Secao>

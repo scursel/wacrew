@@ -1,7 +1,7 @@
 /**
- * Resumo curto de cada conversa, fixo no painel do cliente. Nasce de carona na
- * pré-seleção de departamento (a mesma chamada, que já lê as últimas mensagens)
- * e só é refeito quando o operador clica em Atualizar. Nunca roda sozinho além disso.
+ * Resumo curto de cada conversa, fixo no painel do cliente. Só é gerado pelo
+ * botão (Resumir no compositor / Gerar novo resumo no painel) e acumula no
+ * histórico: entrar na conversa nunca chama a IA.
  */
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
