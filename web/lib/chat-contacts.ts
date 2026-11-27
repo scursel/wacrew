@@ -25,7 +25,7 @@ type MsgParaContatos = {
   id: string;
   sender: string;
   senderName: string;
-  fromMe: boolean;
+  fromMe?: boolean;
   quotedId?: string | null;
   quotedSender?: string | null;
 };
@@ -48,7 +48,7 @@ export function contactsFromMessages(
     const num = numberFromJid(m.sender);
     if (!num) continue;
     if (!names.has(num)) names.set(num, m.senderName);
-    if (m.fromMe) mine.add(num);
+    if (m.fromMe === true) mine.add(num);
   }
 
   for (const m of messages) {
@@ -57,7 +57,7 @@ export function contactsFromMessages(
     if (!orig) continue;
     const qNum = numberFromJid(m.quotedSender);
     if (!qNum) continue;
-    if (orig.fromMe) {
+    if (orig.fromMe === true) {
       mine.add(qNum);
       continue;
     }
