@@ -197,6 +197,7 @@ export class BaileysGateway implements WhatsAppGateway {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   /** Serializa transições de socket (connect/reconnect/resetSession/repair) para evitar 2 sockets simultâneos. */
   private connQueue: Promise<unknown> = Promise.resolve();
+  private emTransicao = false;
   /** Mapa LID↔telefone↔nome persistido em `<DATA_DIR>/.contacts.json`. */
   private readonly contacts: ContactStore;
   /**
@@ -338,7 +339,15 @@ export class BaileysGateway implements WhatsAppGateway {
   }
 
   private serializarConexao<T>(fn: () => Promise<T>): Promise<T> {
-    const passo = this.connQueue.then(fn, fn);
+    if (this.emTransicao) return fn();
+    const passo = this.connQueue.then(async () => {
+      this.emTransicao = true;
+      try {
+        return await fn();
+      } finally {
+        this.emTransicao = false;
+      }
+    });
     this.connQueue = passo.catch(() => undefined);
     return passo;
   }
@@ -390,7 +399,7 @@ export class BaileysGateway implements WhatsAppGateway {
         qr: null,
         pairingCode: null,
       } satisfies GatewayStatus);
-      await this.connectInner(true);
+      await this.connect(true);
     });
   }
 
@@ -442,7 +451,7 @@ export class BaileysGateway implements WhatsAppGateway {
       } satisfies GatewayStatus);
       const backup = await archiveAuthDir(this.authDir);
       if (backup) logger.warn({ backup }, '🗄️  Credenciais antigas arquivadas.');
-      await this.connectInner(true);
+      await this.connect(true);
     });
   }
 
@@ -790,8 +799,8 @@ export class BaileysGateway implements WhatsAppGateway {
     this.emitter.emit('message', msg);
   }
 
-  private async connect(): Promise<void> {
-    await this.serializarConexao(() => this.connectInner(false));
+  private async connect(propagarErro = false): Promise<void> {
+    await this.serializarConexao(() => this.connectInner(propagarErro));
   }
 
   private async connectInner(propagarErro: boolean): Promise<void> {
@@ -1349,7 +1358,7 @@ export class BaileysGateway implements WhatsAppGateway {
         this.teardownSocket();
         const backup = await archiveAuthDir(this.authDir);
         if (backup) logger.warn({ backup }, '🗄️  Credenciais antigas arquivadas.');
-        await this.connectInner(false);
+        await this.connect(false);
       } catch (err) {
         logger.error({ err }, 'Falha ao voltar ao modo de pareamento após logout.');
       }
