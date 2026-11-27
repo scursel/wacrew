@@ -335,6 +335,59 @@ export class BaileysGateway implements WhatsAppGateway {
     this.sock?.end(undefined);
   }
 
+  /** Força uma reconexão imediata mantendo as credenciais atuais. */
+  async reconnect(): Promise<void> {
+    if (this.stopping) return;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    this.reconnectAttempts = 0;
+    logger.info('🔄 Reconexão manual solicitada pelo painel.');
+    this.emitter.emit('status', {
+      connection: 'connecting',
+      qr: null,
+      pairingCode: null,
+    } satisfies GatewayStatus);
+    await this.connect();
+  }
+
+  /**
+   * Encerra a sessão atual, arquiva as credenciais antigas e inicia novo
+   * pareamento (QR code / código por número) sob demanda do painel.
+   */
+  async resetSession(): Promise<void> {
+    if (this.stopping) return;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    this.reconnectAttempts = 0;
+    this.lastQr = null;
+    logger.warn('🔌 Troca de aparelho / novo QR solicitada pelo painel.');
+    const current = this.sock;
+    if (current) {
+      // Remove listener de connection.update antes do logout para evitar disparo duplo de repair().
+      try {
+        current.ev.removeAllListeners('connection.update');
+      } catch {
+        // ignora
+      }
+      if (current.user) {
+        await Promise.race([
+          current.logout().catch(() => {}),
+          new Promise<void>((r) => setTimeout(r, 2500)),
+        ]);
+      }
+    }
+    this.emitter.emit('status', {
+      connection: 'connecting',
+      qr: null,
+      pairingCode: null,
+    } satisfies GatewayStatus);
+    await this.repair();
+  }
+
   /** Jid normalizado da PRÓPRIA conta (chat "você mesmo") — null sem sessão. */
   selfJid(): string | null {
     return this.sock?.user?.id ? jidNormalizedUser(this.sock.user.id) : null;

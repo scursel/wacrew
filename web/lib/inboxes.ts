@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { writeJsonAtomic } from './json-store';
-import { DATA_DIR } from './paths';
+import { CONTROL_URL, DATA_DIR } from './paths';
 
 export interface InboxCanal {
   id: string;
@@ -22,7 +22,7 @@ function canalPrincipal(): InboxCanal {
   return {
     id: 'principal',
     nome: 'WhatsApp Principal',
-    controlUrl: (process.env.COLLECTOR_CONTROL_URL || 'http://127.0.0.1:4199').trim(),
+    controlUrl: (process.env.COLLECTOR_CONTROL_URL || CONTROL_URL).trim(),
     ...(process.env.COLLECTOR_CONTROL_TOKEN ? { controlToken: process.env.COLLECTOR_CONTROL_TOKEN } : {}),
     padrao: true,
     ativo: true,
@@ -106,13 +106,27 @@ export async function resolverInbox(id?: string, dataDir = DATA_DIR): Promise<In
 export async function testarConexaoInbox(
   inbox: InboxCanal,
 ): Promise<{ ok: boolean; status?: string; erro?: string }> {
+  const base = inbox.controlUrl.replace(/\/+$/, '');
+  const headers = inbox.controlToken ? { Authorization: `Bearer ${inbox.controlToken}` } : undefined;
   try {
-    const res = await fetch(`${inbox.controlUrl.replace(/\/+$/, '')}/status`, {
-      headers: inbox.controlToken ? { Authorization: `Bearer ${inbox.controlToken}` } : undefined,
+    const res = await fetch(`${base}/health`, {
+      headers,
       signal: AbortSignal.timeout(4000),
     });
-    if (!res.ok) return { ok: false, erro: `HTTP ${res.status}` };
-    const data = (await res.json().catch(() => ({}))) as { connection?: string; status?: string };
+    if (res.ok) {
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; connection?: string; status?: string };
+      return { ok: true, status: data.connection ?? data.status ?? 'online' };
+    }
+    if (res.status !== 404) {
+      return { ok: false, erro: `HTTP ${res.status}` };
+    }
+    // Compatibilidade com coletores que expõem /status em vez de /health
+    const resStatus = await fetch(`${base}/status`, {
+      headers,
+      signal: AbortSignal.timeout(4000),
+    });
+    if (!resStatus.ok) return { ok: false, erro: `HTTP ${resStatus.status}` };
+    const data = (await resStatus.json().catch(() => ({}))) as { connection?: string; status?: string };
     return { ok: true, status: data.connection ?? data.status ?? 'online' };
   } catch (e) {
     return { ok: false, erro: e instanceof Error ? e.message : 'erro de conexão' };

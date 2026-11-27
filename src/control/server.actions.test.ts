@@ -11,6 +11,8 @@ function gatewayMock() {
     key: { id: string; participant?: string; fromMe?: boolean };
   }> = [];
   const texts: Array<{ jid: string; text: string; mentions?: string[]; quotedId?: string }> = [];
+  let reconnectCalls = 0;
+  let resetCalls = 0;
   const gw = {
     async checkNumber(n: string) {
       return { exists: true, jid: `${n}@s.whatsapp.net` };
@@ -27,8 +29,20 @@ function gatewayMock() {
     async deleteMessage(jid: string, key: { id: string; participant?: string; fromMe?: boolean }) {
       deleted.push({ jid, key });
     },
+    async reconnect() {
+      reconnectCalls += 1;
+    },
+    async resetSession() {
+      resetCalls += 1;
+    },
   } as unknown as WhatsAppGateway;
-  return { gw, deleted, texts };
+  return {
+    gw,
+    deleted,
+    texts,
+    getReconnectCalls: () => reconnectCalls,
+    getResetCalls: () => resetCalls,
+  };
 }
 
 async function subir(gw: WhatsAppGateway): Promise<string> {
@@ -89,5 +103,18 @@ describe('control /message e /send com citar/mentions', () => {
         quotedId: 'ORIG-1',
       },
     ]);
+  });
+
+  it('POST /reconnect e POST /reset-session delegam ao gateway', async () => {
+    const { gw, getReconnectCalls, getResetCalls } = gatewayMock();
+    const base = await subir(gw);
+
+    const r1 = await fetch(`${base}/reconnect`, { method: 'POST' });
+    expect(r1.status).toBe(200);
+    expect(getReconnectCalls()).toBe(1);
+
+    const r2 = await fetch(`${base}/reset-session`, { method: 'POST' });
+    expect(r2.status).toBe(200);
+    expect(getResetCalls()).toBe(1);
   });
 });

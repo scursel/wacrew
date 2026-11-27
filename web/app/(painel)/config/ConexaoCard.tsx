@@ -1,8 +1,10 @@
 "use client";
 
 import QRCode from "qrcode";
-import { type ReactNode, useEffect, useState } from "react";
-import { Badge, Button, Card, Icone, Input, Segmentado } from "@/app/components/ui";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { mensagemDe, pedirJson } from "@/app/components/pedirJson";
+import { haQuanto } from "@/app/components/tempo";
+import { Aviso, Badge, BotaoConfirmar, Button, Card, Icone, Input, Segmentado } from "@/app/components/ui";
 import type { CollectorStatus } from "@/lib/config";
 import { ANCORA_CARD, type AoResumir, type Resumo } from "./secoes";
 
@@ -16,7 +18,7 @@ const ESTADOS: Record<Conn, { selo: string; curto: string; badge: "ok" | "accent
   close: { selo: "Desconectado", curto: "desconectado", badge: "danger", tom: "danger" },
   logged_out: { selo: "Sessão encerrada", curto: "sessão caiu", badge: "danger", tom: "danger" },
   unknown: { selo: "Sem estado", curto: "sem estado", badge: "neutral" },
-  offline: { selo: "Coletor offline", curto: "offline", badge: "neutral" },
+  offline: { selo: "Coletor offline", curto: "offline", badge: "danger", tom: "danger" },
 };
 
 function explicacao(conn: Conn, status: CollectorStatus | null): ReactNode {
@@ -25,60 +27,75 @@ function explicacao(conn: Conn, status: CollectorStatus | null): ReactNode {
       const n = status?.watchedCount ?? 0;
       return (
         <>
-          Monitorando <span className="font-mono tabular-nums text-fg">{n}</span> {n === 1 ? "grupo" : "grupos"}.
+          WhatsApp Web conectado e monitorando <span className="font-mono tabular-nums text-fg">{n}</span>{" "}
+          {n === 1 ? "grupo" : "grupos"} além das conversas diretas.
         </>
       );
     }
     case "connecting":
-      return "Conectando ao WhatsApp…";
+      return "Conectando ao WhatsApp… Se demorar mais de alguns segundos, clique em Reconectar agora ou gere um novo QR.";
     case "close":
-      return "A conexão caiu. Com o coletor rodando, ele tenta reconectar sozinho.";
+      return "A conexão com o WhatsApp Web caiu. O coletor tenta reconectar sozinho, mas você pode forçar agora pelos botões abaixo.";
     case "logged_out":
-      return "A sessão foi encerrada no celular. Um QR novo aparece aqui em instantes para conectar de novo.";
+      return "A sessão foi encerrada no celular. Um QR novo deve aparecer aqui em instantes — se não aparecer, clique em Gerar novo QR.";
     case "unknown":
-      return "O coletor ainda não informou o estado da conexão.";
+      return "O coletor ainda não informou o estado da conexão. Tente Reconectar agora.";
     case "offline":
-      return (
-        <>
-          O coletor não está rodando. Inicie com{" "}
-          <code className="rounded-tag bg-elevated px-1.5 py-0.5 font-mono text-[12.5px] text-fg">npm run dev</code> na raiz do
-          projeto.
-        </>
-      );
+      return "O serviço coletor do WhatsApp não está respondendo no servidor. Se estiver na nuvem (Coolify), reinicie o serviço; rodando local, inicie com npm run dev.";
     default:
       return null;
   }
 }
 
-/** Conexão do coletor com o WhatsApp: estado ao vivo (a cada 2,5 s) e o QR quando é preciso parear. */
+/** Conexão do coletor com o WhatsApp: estado ao vivo (a cada 2,5 s), reconexão manual, troca de aparelho e QR. */
 export function ConexaoCard({ aoResumir }: { aoResumir: AoResumir }) {
   const [status, setStatus] = useState<CollectorStatus | null>(null);
+  const [reconectando, setReconectando] = useState(false);
+  const [aviso, setAviso] = useState<{ tom: "ok" | "erro"; texto: string } | null>(null);
+
+  const lerStatus = useCallback(async () => {
+    try {
+      const res = await fetch("/api/status", { cache: "no-store" });
+      const dados = (await res.json()) as CollectorStatus;
+      setStatus(dados);
+    } catch {
+      /* coletor pode estar fora do ar: segue mostrando o último estado */
+    }
+  }, []);
 
   useEffect(() => {
-    let vivo = true;
-    const ler = async () => {
-      try {
-        const res = await fetch("/api/status", { cache: "no-store" });
-        const dados = (await res.json()) as CollectorStatus;
-        if (vivo) setStatus(dados);
-      } catch {
-        /* coletor pode estar fora do ar: segue mostrando o último estado */
-      }
-    };
-    void ler();
-    const id = setInterval(ler, 2500);
-    return () => {
-      vivo = false;
-      clearInterval(id);
-    };
-  }, []);
+    void lerStatus();
+    const id = setInterval(() => void lerStatus(), 2500);
+    return () => clearInterval(id);
+  }, [lerStatus]);
 
   const conn = status?.connection ?? "offline";
   const estado = ESTADOS[conn];
+  const precisaReconectar = conn === "close" || conn === "logged_out" || conn === "unknown" || conn === "connecting";
 
   useEffect(() => {
     aoResumir("conexao", { texto: estado.curto, tom: estado.tom });
   }, [aoResumir, estado]);
+
+  async function acionarConexao(acao: "reconectar" | "novo_qr") {
+    setReconectando(true);
+    setAviso(null);
+    try {
+      await pedirJson<{ ok: boolean }>("/api/whatsapp/conexao", { corpo: { acao } });
+      setAviso({
+        tom: "ok",
+        texto:
+          acao === "reconectar"
+            ? "Reconexão iniciada. Aguarde alguns segundos para o status atualizar."
+            : "Sessão encerrada. Um novo QR code vai aparecer abaixo em instantes.",
+      });
+      setTimeout(() => void lerStatus(), 1200);
+    } catch (e) {
+      setAviso({ tom: "erro", texto: mensagemDe(e) });
+    } finally {
+      setReconectando(false);
+    }
+  }
 
   return (
     <Card
@@ -92,12 +109,58 @@ export function ConexaoCard({ aoResumir }: { aoResumir: AoResumir }) {
           {estado.selo}
         </Badge>
       }
+      rodape={
+        <div className="flex w-full flex-wrap items-center justify-between gap-3">
+          <span className="text-[12.5px] text-fg-faint">
+            {status?.updatedAt ? `Atualizado ${haQuanto(status.updatedAt)}` : "Verificando estado do coletor…"}
+          </span>
+          {conn !== "offline" && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={precisaReconectar ? "primary" : "subtle"}
+                loading={reconectando}
+                onClick={() => void acionarConexao("reconectar")}
+              >
+                <Icone nome="refresh" tamanho={14} />
+                Reconectar agora
+              </Button>
+              <BotaoConfirmar
+                variante="ghost"
+                pergunta="Encerrar esta sessão e gerar um QR novo?"
+                confirmar="Gerar novo QR"
+                disabled={reconectando}
+                aoConfirmar={() => acionarConexao("novo_qr")}
+              >
+                {conn === "open" ? "Trocar aparelho / novo QR…" : "Gerar novo QR…"}
+              </BotaoConfirmar>
+            </div>
+          )}
+        </div>
+      }
     >
-      {conn === "qr" && (status?.qr || status?.pairingCode) ? (
-        <Pareamento qr={status.qr ?? ""} pairingCode={status.pairingCode ?? null} />
-      ) : (
-        <p className="text-[13.5px] leading-relaxed text-fg-dim">{explicacao(conn, status)}</p>
-      )}
+      <div className="space-y-4">
+        {aviso && (
+          <Aviso tom={aviso.tom === "ok" ? "info" : "erro"} aoFechar={() => setAviso(null)}>
+            {aviso.texto}
+          </Aviso>
+        )}
+
+        {conn === "qr" && (status?.qr || status?.pairingCode) ? (
+          <Pareamento qr={status.qr ?? ""} pairingCode={status.pairingCode ?? null} />
+        ) : (
+          <div className="space-y-2">
+            <p className="text-[13.5px] leading-relaxed text-fg-dim">{explicacao(conn, status)}</p>
+            {conn === "open" && (
+              <p className="text-[12.5px] leading-relaxed text-fg-faint">
+                Se o WhatsApp Web cair ou parar de receber mensagens, use <strong className="font-medium text-fg-dim">Reconectar agora</strong> abaixo. Para reconectar com outro celular ou re-parear do zero, clique em{" "}
+                <strong className="font-medium text-fg-dim">Trocar aparelho / novo QR…</strong>.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
     </Card>
   );
 }

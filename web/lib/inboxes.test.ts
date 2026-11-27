@@ -1,8 +1,8 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { lerInboxes, removerInbox, resolverInbox, salvarInbox } from "./inboxes";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { lerInboxes, removerInbox, resolverInbox, salvarInbox, testarConexaoInbox } from "./inboxes";
 
 describe("inboxes multi-chip", () => {
   let dir = "";
@@ -35,5 +35,25 @@ describe("inboxes multi-chip", () => {
 
     await expect(removerInbox("principal", dir)).rejects.toThrow();
     expect(await removerInbox(sec.id, dir)).toBe(true);
+  });
+
+  it("testarConexaoInbox usa /health do coletor", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    const r = await testarConexaoInbox({
+      id: "principal",
+      nome: "WhatsApp Principal",
+      controlUrl: "http://127.0.0.1:4310",
+      padrao: true,
+      ativo: true,
+      criadoEm: "2026-01-01T00:00:00.000Z",
+    });
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "http://127.0.0.1:4310/health",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
+    expect(r).toEqual({ ok: true, status: "online" });
+    fetchSpy.mockRestore();
   });
 });

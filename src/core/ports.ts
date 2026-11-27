@@ -43,6 +43,10 @@ export interface WhatsAppGateway {
   start(): Promise<void>;
   /** Encerra a conexão de forma limpa. */
   stop(): Promise<void>;
+  /** Força uma reconexão imediata mantendo a sessão atual (útil se a conexão travar ou cair). */
+  reconnect?(): Promise<void>;
+  /** Encerra a sessão atual, arquiva as credenciais e volta para o modo de pareamento (novo QR). */
+  resetSession?(): Promise<void>;
   /** Registra handler para cada mensagem nova de grupo (tempo real). */
   onMessage(handler: (message: InboundMessage) => void): void;
   /** Registra handler disparado quando a lista de grupos é (re)carregada. */

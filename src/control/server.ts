@@ -232,6 +232,36 @@ export function startControlServer(
       return;
     }
 
+    if (req.method === 'POST' && req.url === '/reconnect') {
+      void (async () => {
+        if (!gateway.reconnect) {
+          json(501, { error: 'reconexão manual indisponível neste gateway' });
+          return;
+        }
+        await gateway.reconnect();
+        json(200, { ok: true });
+      })().catch((err) => {
+        logger.error({ err }, 'Falha ao reconectar WhatsApp via control server.');
+        json(500, { error: err instanceof Error ? err.message : String(err) });
+      });
+      return;
+    }
+
+    if (req.method === 'POST' && req.url === '/reset-session') {
+      void (async () => {
+        if (!gateway.resetSession) {
+          json(501, { error: 'reset de sessão indisponível neste gateway' });
+          return;
+        }
+        await gateway.resetSession();
+        json(200, { ok: true });
+      })().catch((err) => {
+        logger.error({ err }, 'Falha ao encerrar sessão / gerar novo QR via control server.');
+        json(500, { error: err instanceof Error ? err.message : String(err) });
+      });
+      return;
+    }
+
     if (req.method === 'POST' && req.url === '/history') {
       void (async () => {
         const body = (await readJson(req)) as {

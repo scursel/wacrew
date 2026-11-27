@@ -10,6 +10,16 @@ import type {
   EventoEntregaCru,
   NotificacaoItem,
 } from "@/lib/notificacoes";
+import {
+  contextoSeguroParaPush,
+  EVENTO_PREFS_NOTIFICACAO,
+  EVENTO_TESTE_NOTIFICACAO,
+  lerPrefsNotificacao,
+  PREFS_PADRAO,
+  type PrefsNotificacao,
+  salvarPrefsNotificacao,
+  tocarSomNotificacao,
+} from "@/lib/notificacoes-prefs";
 import { useRotas } from "./RotasPainel";
 import { useTempoReal } from "./TempoRealProvider";
 import { haQuanto } from "./tempo";
@@ -21,7 +31,6 @@ export type GroupMeta = Pick<GroupSummary, "slug" | "name" | "avatarPath" | "mut
 type AbaFiltro = "todas" | "mensagens" | "sistema";
 
 const CHAVE_VISTO_EM = "balcao:notificacoes:vistoEm";
-const CHAVE_ALERTA_NATIVO = "balcao:notificacoes:alertaNativo";
 const MAX_ITENS = 40;
 const TOAST_MS = 5_000;
 
@@ -93,7 +102,8 @@ export function Notificacoes({ groups }: { groups: GroupMeta[] }) {
   const [aba, setAba] = useState<AbaFiltro>("todas");
   const [itens, setItens] = useState<NotificacaoItem[]>([]);
   const [vistoEm, setVistoEm] = useState<string>("");
-  const [alertaNativo, setAlertaNativo] = useState(false);
+  const [prefs, setPrefs] = useState<PrefsNotificacao>(PREFS_PADRAO);
+  const [avisoPermissao, setAvisoPermissao] = useState<string | null>(null);
   const [rotuloSO, setRotuloSO] = useState("Alerta no navegador");
   const [toast, setToast] = useState<NotificacaoItem | null>(null);
 
@@ -115,8 +125,9 @@ export function Notificacoes({ groups }: { groups: GroupMeta[] }) {
   const porSlugRef = useRef(porSlug);
   porSlugRef.current = porSlug;
 
-  const alertaNativoRef = useRef(alertaNativo);
-  alertaNativoRef.current = alertaNativo;
+  const prefsRef = useRef(prefs);
+  prefsRef.current = prefs;
+  const tituloBaseRef = useRef<string | null>(null);
 
   const salvarVisto = useCallback((iso: string) => {
     setVistoEm(iso);
@@ -138,13 +149,16 @@ export function Notificacoes({ groups }: { groups: GroupMeta[] }) {
     try {
       const salvoVisto = window.localStorage.getItem(CHAVE_VISTO_EM);
       if (salvoVisto) setVistoEm(salvoVisto);
-      const salvoAlerta = window.localStorage.getItem(CHAVE_ALERTA_NATIVO);
-      if (salvoAlerta === "1" && typeof Notification !== "undefined" && Notification.permission === "granted") {
-        setAlertaNativo(true);
-      }
+      setPrefs(lerPrefsNotificacao());
     } catch {
       /* ignora */
     }
+    const aoMudarPrefs = (ev: Event) => {
+      const detalhe = (ev as CustomEvent<PrefsNotificacao>).detail;
+      setPrefs(detalhe ?? lerPrefsNotificacao());
+    };
+    window.addEventListener(EVENTO_PREFS_NOTIFICACAO, aoMudarPrefs);
+    return () => window.removeEventListener(EVENTO_PREFS_NOTIFICACAO, aoMudarPrefs);
   }, []);
 
   useEffect(() => {
@@ -155,7 +169,7 @@ export function Notificacoes({ groups }: { groups: GroupMeta[] }) {
 
   const dispararAlertaNavegador = useCallback(
     (item: NotificacaoItem) => {
-      if (!alertaNativoRef.current) return;
+      if (!prefsRef.current.alertaSistema) return;
       if (typeof window === "undefined" || typeof Notification === "undefined") return;
       if (Notification.permission !== "granted") return;
       try {
@@ -178,6 +192,27 @@ export function Notificacoes({ groups }: { groups: GroupMeta[] }) {
     },
     [rotas, router],
   );
+
+  // Teste disparado pela tela de Configurações (mostra banner + toca som + dispara alerta nativo se ativo).
+  useEffect(() => {
+    const aoTestar = () => {
+      const exemplo: NotificacaoItem = {
+        id: `teste:${Date.now()}`,
+        tipo: "sistema",
+        slug: "",
+        chatNome: "Teste de notificação",
+        remetente: "WACrew",
+        texto: "As notificações no painel estão funcionando.",
+        timestamp: new Date().toISOString(),
+        estado: "entregue",
+      };
+      if (prefsRef.current.toast) setToast(exemplo);
+      if (prefsRef.current.som) tocarSomNotificacao();
+      dispararAlertaNavegador(exemplo);
+    };
+    window.addEventListener(EVENTO_TESTE_NOTIFICACAO, aoTestar);
+    return () => window.removeEventListener(EVENTO_TESTE_NOTIFICACAO, aoTestar);
+  }, [dispararAlertaNavegador]);
 
   const chatEstaAberto = useCallback(
     (slug: string): boolean => {
@@ -245,7 +280,8 @@ export function Notificacoes({ groups }: { groups: GroupMeta[] }) {
           return [novo, ...filtrados].slice(0, MAX_ITENS);
         });
         if (!chatEstaAberto(slug)) {
-          setToast(novo);
+          if (prefsRef.current.toast) setToast(novo);
+          if (prefsRef.current.som) tocarSomNotificacao();
           dispararAlertaNavegador(novo);
         }
       } else if (msg.origem === "ia_meta" || msg.origem === "ia") {
@@ -300,8 +336,9 @@ export function Notificacoes({ groups }: { groups: GroupMeta[] }) {
         estado === "falhou" ||
         estado === "entregando"
       ) {
-        setToast(novo);
+        if (prefsRef.current.toast) setToast(novo);
         if (estado === "interrompida" || estado === "falhou") {
+          if (prefsRef.current.som) tocarSomNotificacao();
           dispararAlertaNavegador(novo);
         }
       }
@@ -374,6 +411,21 @@ export function Notificacoes({ groups }: { groups: GroupMeta[] }) {
     [itens, vistoEm],
   );
 
+  // Mantém o contador `(N)` no título da aba quando habilitado.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const limpo = document.title.replace(/^\(\d+\+?\)\s*/, "");
+    if (!tituloBaseRef.current || limpo !== tituloBaseRef.current) {
+      tituloBaseRef.current = limpo;
+    }
+    const base = tituloBaseRef.current || "WACrew";
+    if (prefs.tituloAba && naoLidas > 0) {
+      document.title = `(${naoLidas > 99 ? "99+" : naoLidas}) ${base}`;
+    } else {
+      document.title = base;
+    }
+  }, [naoLidas, prefs.tituloAba, pathname]);
+
   const itensFiltrados = useMemo(() => {
     if (aba === "mensagens") return itens.filter((i) => i.tipo === "mensagem");
     if (aba === "sistema") return itens.filter((i) => i.tipo === "sistema");
@@ -382,37 +434,50 @@ export function Notificacoes({ groups }: { groups: GroupMeta[] }) {
 
   const alternarPainel = useCallback(() => {
     setAberto((atual) => !atual);
+    setAvisoPermissao(null);
   }, []);
 
+  const alternarSom = useCallback(() => {
+    const proximo = salvarPrefsNotificacao({ som: !prefs.som });
+    setPrefs(proximo);
+    if (proximo.som) tocarSomNotificacao();
+  }, [prefs.som]);
+
   const alternarAlertaNativo = useCallback(async () => {
-    if (alertaNativo) {
-      setAlertaNativo(false);
-      try {
-        window.localStorage.setItem(CHAVE_ALERTA_NATIVO, "0");
-      } catch {
-        /* ignora */
-      }
+    setAvisoPermissao(null);
+    if (prefs.alertaSistema) {
+      setPrefs(salvarPrefsNotificacao({ alertaSistema: false }));
       return;
     }
-    if (typeof window === "undefined" || typeof Notification === "undefined") return;
+    if (typeof window === "undefined") return;
+    if (!contextoSeguroParaPush()) {
+      setAvisoPermissao("Alertas do sistema exigem HTTPS (ex.: Tailscale HTTPS). Som e banner no painel já funcionam aqui.");
+      return;
+    }
+    if (typeof Notification === "undefined") {
+      setAvisoPermissao("Este navegador não oferece alertas do sistema.");
+      return;
+    }
     try {
       const perm =
         Notification.permission === "granted"
           ? "granted"
           : await Notification.requestPermission();
       const ativo = perm === "granted";
-      setAlertaNativo(ativo);
-      window.localStorage.setItem(CHAVE_ALERTA_NATIVO, ativo ? "1" : "0");
+      setPrefs(salvarPrefsNotificacao({ alertaSistema: ativo }));
+      if (!ativo) {
+        setAvisoPermissao("Permissão bloqueada no navegador. Libere nas configurações do site (ícone de cadeado).");
+      }
     } catch {
-      /* permissão negada ou indisponível */
+      setAvisoPermissao("Não foi possível solicitar permissão de notificação neste navegador.");
     }
-  }, [alertaNativo]);
+  }, [prefs.alertaSistema]);
 
   const abrirChat = useCallback(
     (slug: string) => {
       setAberto(false);
       setToast((t) => (t?.slug === slug ? null : t));
-      router.push(rotas.chat(slug));
+      if (slug) router.push(rotas.chat(slug));
     },
     [rotas, router],
   );
@@ -505,22 +570,44 @@ export function Notificacoes({ groups }: { groups: GroupMeta[] }) {
               })}
             </div>
 
-            <button
-              type="button"
-              role="switch"
-              aria-checked={alertaNativo}
-              onClick={alternarAlertaNativo}
-              title={`Disparar notificação nativa (${rotuloSO}) quando chegar mensagem nova`}
-              className={`flex items-center gap-1 rounded-[6px] px-2 py-1 text-[11px] font-medium transition-colors ${
-                alertaNativo
-                  ? "bg-accent-soft text-accent"
-                  : "text-fg-faint hover:bg-elevated hover:text-fg"
-              }`}
-            >
-              <Icone nome="bell" tamanho={12} />
-              <span>{rotuloSO}</span>
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={prefs.som}
+                onClick={alternarSom}
+                title={prefs.som ? "Som ligado (clique para silenciar)" : "Som silenciado (clique para ligar)"}
+                className={`flex items-center gap-1 rounded-[6px] px-2 py-1 text-[11px] font-medium transition-colors ${
+                  prefs.som
+                    ? "bg-accent-soft text-accent"
+                    : "text-fg-faint hover:bg-elevated hover:text-fg"
+                }`}
+              >
+                <Icone nome={prefs.som ? "bell" : "mute"} tamanho={12} />
+                <span>Som</span>
+              </button>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={prefs.alertaSistema}
+                onClick={alternarAlertaNativo}
+                title={`Disparar notificação nativa (${rotuloSO}) quando chegar mensagem nova`}
+                className={`flex items-center gap-1 rounded-[6px] px-2 py-1 text-[11px] font-medium transition-colors ${
+                  prefs.alertaSistema
+                    ? "bg-accent-soft text-accent"
+                    : "text-fg-faint hover:bg-elevated hover:text-fg"
+                }`}
+              >
+                <span>{rotuloSO.replace("Alerta no ", "")}</span>
+              </button>
+            </div>
           </div>
+
+          {avisoPermissao && (
+            <div className="border-b border-line bg-elevated px-3 py-2 text-[11.5px] leading-snug text-fg-dim">
+              {avisoPermissao}
+            </div>
+          )}
 
           <div className="min-h-0 flex-1 overflow-y-auto divide-y divide-line">
             {itensFiltrados.length === 0 ? (

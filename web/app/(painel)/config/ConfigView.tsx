@@ -10,6 +10,7 @@ import { ExpedienteCard } from "./ExpedienteCard";
 import { GruposCard } from "./GruposCard";
 import { ModelosCard } from "./ModelosCard";
 import { NavSecoes } from "./NavSecoes";
+import { NotificacoesCard } from "./NotificacoesCard";
 import { RadarCard } from "./RadarCard";
 import { RespostasProntasCard } from "./RespostasProntasCard";
 import { type IdSecao, type Resumo, SECOES } from "./secoes";
@@ -76,21 +77,22 @@ export function ConfigView() {
 
   return (
     <CorpoPagina ref={rolagem}>
-      <div className="flex flex-col gap-4 min-[1021px]:grid min-[1021px]:max-w-[1160px] min-[1021px]:grid-cols-[208px_minmax(0,1fr)] min-[1021px]:items-start min-[1021px]:gap-8">
+      <div className="flex flex-col gap-4 min-[1021px]:grid min-[1021px]:max-w-[1160px] min-[1021px]:grid-cols-[224px_minmax(0,1fr)] min-[1021px]:items-start min-[1021px]:gap-8">
         <NavSecoes ativa={ativa} resumos={resumos} aoIr={irPara} />
         <Grade12>
           <ConexaoCard aoResumir={resumir} />
-          <CanaisCard aoResumir={resumir} />
-          <SincronizacaoCard aoResumir={resumir} />
           <GruposCard aoResumir={resumir} />
+          <SincronizacaoCard aoResumir={resumir} />
+          <NotificacoesCard aoResumir={resumir} />
           <RadarCard aoResumir={resumir} />
-          <TranscricaoCard aoResumir={resumir} />
           <ModelosCard aoResumir={resumir} />
+          <TranscricaoCard aoResumir={resumir} />
           <RespostasProntasCard aoResumir={resumir} />
           <ExpedienteCard aoResumir={resumir} />
           <AutomacoesCard aoResumir={resumir} />
-          <WebhooksCard aoResumir={resumir} />
           <TimeCard aoResumir={resumir} />
+          <CanaisCard aoResumir={resumir} />
+          <WebhooksCard aoResumir={resumir} />
         </Grade12>
       </div>
     </CorpoPagina>

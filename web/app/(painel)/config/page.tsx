@@ -9,7 +9,7 @@ export default function ConfigPage() {
       <CabecalhoPagina
         variante="barra"
         titulo="Configurações"
-        subtitulo={<span className="max-[860px]:hidden">Conexão, grupos, avisos, transcrição e modelos de IA</span>}
+        subtitulo={<span className="max-[860px]:hidden">WhatsApp, notificações, IA, atendimento e opções avançadas</span>}
       />
       <ConfigView />
     </>
