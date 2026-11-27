@@ -31,6 +31,11 @@ function pickBackend(): Backend {
   return process.platform === "darwin" && process.arch === "arm64" ? "mlx" : "openrouter";
 }
 
+/** Motor efetivo de transcrição neste servidor: MLX local (Mac) ou 9router (nuvem/Linux). */
+export function transcricaoBackend(): "mlx" | "9router" {
+  return pickBackend() === "mlx" ? "mlx" : "9router";
+}
+
 /**
  * Transcrição na nuvem pelo modelo escolhido na tela de IA (9router): multipart
  * (`file`, `model`, `language`), aceita o `.ogg` do WhatsApp direto. Sem escolha,

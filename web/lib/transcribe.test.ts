@@ -25,6 +25,19 @@ afterEach(async () => {
   await rm(dataDir, { recursive: true, force: true });
 });
 
+describe('transcricaoBackend', () => {
+  it('retorna 9router quando TRANSCRIBE_BACKEND=openrouter', async () => {
+    vi.stubEnv('TRANSCRIBE_BACKEND', 'openrouter');
+    const { transcricaoBackend } = await import('./transcribe');
+    expect(transcricaoBackend()).toBe('9router');
+  });
+  it('retorna mlx quando TRANSCRIBE_BACKEND=mlx', async () => {
+    vi.stubEnv('TRANSCRIBE_BACKEND', 'mlx');
+    const { transcricaoBackend } = await import('./transcribe');
+    expect(transcricaoBackend()).toBe('mlx');
+  });
+});
+
 describe('mediaPathPorId', () => {
   const msgs = [
     { id: 'A1', type: 'audio' as const, mediaPath: 'g/audio/a1.ogg' },
