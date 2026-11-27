@@ -75,7 +75,7 @@ export function GroupWorkspace({
   const [aberto, setAberto] = useState(true);
   const [sobreposto, setSobreposto] = useState(false);
   const [estreito, setEstreito] = useState(false);
-  const [pedidoCopiloto, setPedidoCopiloto] = useState(0);
+  const [pedidoResumo, setPedidoResumo] = useState(0);
 
   useEffect(() => {
     try {
@@ -105,10 +105,10 @@ export function GroupWorkspace({
     });
   }, []);
 
-  const abrirCopiloto = useCallback(() => {
+  const pedirResumo = useCallback(() => {
     if (window.matchMedia(ESTREITO).matches) setSobreposto(true);
     else setAberto(true);
-    setPedidoCopiloto((n) => n + 1);
+    setPedidoResumo((n) => n + 1);
   }, []);
 
   const fecharSobreposto = useCallback(() => setSobreposto(false), []);
@@ -465,7 +465,7 @@ export function GroupWorkspace({
           agoraInicial={agora}
           donoLogin={donoLogin}
           draft={draft}
-          onAbrirCopiloto={dono || copilotoLiberado ? abrirCopiloto : undefined}
+          onPedirResumo={dono ? pedirResumo : undefined}
           lastSeenInicial={lastSeenInicial}
           participantes={painel.pessoas.map((p) => ({ id: p.id, nome: p.nome }))}
           atendenteNome={atribuicao.inicial.responsavelNome ?? donoLogin ?? null}
@@ -482,7 +482,7 @@ export function GroupWorkspace({
         onFechar={fecharSobreposto}
         onDraft={dono || copilotoLiberado ? pushDraft : undefined}
         onSalvo={() => router.refresh()}
-        pedidoCopiloto={pedidoCopiloto}
+        pedidoResumo={pedidoResumo}
         copilotoLiberado={copilotoLiberado}
       />
     </div>

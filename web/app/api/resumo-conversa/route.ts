@@ -1,20 +1,27 @@
 import { NextResponse } from "next/server";
 import { slugValido } from "@/lib/api-v1";
+import { resolverIrmaosDm } from "@/lib/dm-conversa";
 import { resumirConversa } from "@/lib/equipe/classificar-departamento";
-import { lerResumos } from "@/lib/resumo-conversa";
+import { juntarHistoricosResumos, lerResumos } from "@/lib/resumo-conversa";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** Resumo guardado da conversa (null se ainda não tem). Não chama IA. */
+async function lerHistoricoDaConversa(slug: string) {
+  const [{ irmaos }, todos] = await Promise.all([resolverIrmaosDm(slug), lerResumos()]);
+  const historico = juntarHistoricosResumos(irmaos.map((s) => (Object.hasOwn(todos, s) ? todos[s] : null)));
+  return { resumo: historico[0] ?? null, historico };
+}
+
+/** Resumo guardado e histórico de resumos da conversa. Não chama IA. */
 export async function GET(req: Request) {
   const slug = new URL(req.url).searchParams.get("slug") ?? "";
   if (!slugValido(slug)) return NextResponse.json({ error: "slug inválido" }, { status: 400 });
-  const todos = await lerResumos();
-  return NextResponse.json({ slug, resumo: Object.hasOwn(todos, slug) ? todos[slug] : null });
+  const { resumo, historico } = await lerHistoricoDaConversa(slug);
+  return NextResponse.json({ slug, resumo, historico });
 }
 
-/** Botão Atualizar: refaz o resumo pelo modelo escolhido na tela de IA. */
+/** Botão Resumir / Gerar novo resumo: cria novo resumo e acumula no histórico com data/hora. */
 export async function POST(req: Request) {
   let corpo: { slug?: unknown };
   try {
@@ -25,7 +32,9 @@ export async function POST(req: Request) {
   const slug = typeof corpo.slug === "string" ? corpo.slug : "";
   if (!slugValido(slug)) return NextResponse.json({ error: "slug inválido" }, { status: 400 });
   try {
-    return NextResponse.json({ slug, resumo: await resumirConversa(slug) });
+    await resumirConversa(slug);
+    const { resumo, historico } = await lerHistoricoDaConversa(slug);
+    return NextResponse.json({ slug, resumo, historico });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "não resumiu" }, { status: 502 });
   }

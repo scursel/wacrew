@@ -21,12 +21,15 @@ export function SuggestionCard({
   slug,
   messageId,
   followup = false,
+  manual = false,
   onUseDraft,
 }: {
   slug: string;
   messageId: string;
   /** true = acompanhamento (a sua mensagem ficou sem resposta) em vez de resposta. */
   followup?: boolean;
+  /** true = pedido explícito no compositor: funciona mesmo com copiloto desligado e sem atraso. */
+  manual?: boolean;
   onUseDraft?: (text: string) => void;
 }) {
   const [text, setText] = useState("");
@@ -51,11 +54,20 @@ export function SuggestionCard({
         const res = await fetch("/api/copilot/suggest", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ slug, messageId, refresh }),
+          body: JSON.stringify({ slug, messageId, refresh, manual }),
           signal: controller.signal,
         });
-        // Copiloto desligado, sem provedor ou alvo inválido: o card some, sem ruído.
+        if (res.status === 503) {
+          setError("IA desligada: escolha um modelo em Configurações › Modelos de IA (Copiloto: rascunhar e sugerir).");
+          return;
+        }
+        // Copiloto desligado, sem provedor ou alvo inválido: no automático some sem ruído; no manual mostra aviso.
         if (res.status === 403 || res.status === 409 || res.status === 404) {
+          if (manual) {
+            const j = (await res.json().catch(() => ({}))) as { error?: string };
+            setError(j.error ?? "Não foi possível gerar uma resposta agora.");
+            return;
+          }
           setLoading(false);
           dismissedSuggestions.add(messageId);
           setDismissed(true);
@@ -110,18 +122,22 @@ export function SuggestionCard({
         abortRef.current = null;
       }
     },
-    [slug, messageId],
+    [slug, messageId, manual],
   );
 
-  // Dispara uma vez por alvo, depois de a conversa assentar (o polling é de 3 s).
+  // Dispara uma vez por alvo: no pedido manual é imediato; no automático espera a conversa assentar.
   useEffect(() => {
     if (dismissedSuggestions.has(messageId)) return;
+    if (manual) {
+      void run(false);
+      return () => abortRef.current?.abort();
+    }
     const id = setTimeout(() => void run(false), 1200);
     return () => {
       clearTimeout(id);
       abortRef.current?.abort();
     };
-  }, [messageId, run]);
+  }, [messageId, manual, run]);
 
   if (dismissed) return null;
 

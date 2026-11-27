@@ -7,7 +7,6 @@ import { ContextoCard } from "../ContextoCard";
 import { BotaoOrcamento } from "../BotaoOrcamento";
 import { ContratoForm } from "../ContratoForm";
 import { ResumoConversa } from "../ResumoConversa";
-import { CopilotPanel } from "../CopilotPanel";
 import { EstadoNotas, NotesPanel, useNotas } from "../NotesPanel";
 import { useRotas } from "../RotasPainel";
 import type { ContatoCrm } from "@/lib/contatos-crm";
@@ -107,7 +106,7 @@ export function PainelCliente({
   onFechar,
   onDraft,
   onSalvo,
-  pedidoCopiloto = 0,
+  pedidoResumo = 0,
   copilotoLiberado = false,
 }: {
   dados: Dados;
@@ -120,8 +119,8 @@ export function PainelCliente({
   onDraft?: (texto: string) => void;
   /** Algo mudou no servidor (etiqueta, contrato): atualiza a fila e o painel. */
   onSalvo?: () => void;
-  /** Muda quando o compositor pede o copiloto: abre e mostra a seção. */
-  pedidoCopiloto?: number;
+  /** Muda quando o operador clica em "Resumir" no compositor: abre a seção e gera um novo resumo. */
+  pedidoResumo?: number;
   /** Copiloto liberado para o atendente (quando dono é null). */
   copilotoLiberado?: boolean;
 }) {
@@ -129,6 +128,7 @@ export function PainelCliente({
   const ref = useRef<HTMLElement>(null);
   const [abertas, setAbertas] = useState(ABERTAS_PADRAO);
   const [editandoContrato, setEditandoContrato] = useState(false);
+  const [qtdResumos, setQtdResumos] = useState<number | null>(null);
   const notas = useNotas(dados.slug, dono !== null);
 
   useEffect(() => {
@@ -152,12 +152,12 @@ export function PainelCliente({
     });
   }, []);
 
-  // O botão da IA pediu o copiloto: abre a seção e leva até ela.
+  // O botão "Resumir" do compositor pediu um novo resumo: abre a seção de histórico e rola até ela.
   useEffect(() => {
-    if (!pedidoCopiloto) return;
-    setAbertas((a) => ({ ...a, copiloto: true }));
-    requestAnimationFrame(() => ref.current?.querySelector('[data-secao="copiloto"]')?.scrollIntoView({ block: "start", behavior: "smooth" }));
-  }, [pedidoCopiloto]);
+    if (!pedidoResumo) return;
+    setAbertas((a) => ({ ...a, resumo: true }));
+    requestAnimationFrame(() => ref.current?.querySelector('[data-secao="resumo"]')?.scrollIntoView({ block: "start", behavior: "smooth" }));
+  }, [pedidoResumo]);
 
   // Por cima da conversa: Esc e clique fora fecham.
   useEffect(() => {
@@ -208,8 +208,14 @@ export function PainelCliente({
       <ContextoCard dados={dados} onEtiquetas={onSalvo} />
 
       {dono && (
-        <Secao id="resumo" titulo="Resumo" aberta={abertas.resumo} onAlternar={alternar}>
-          <ResumoConversa slug={dados.slug} />
+        <Secao
+          id="resumo"
+          titulo="Histórico de resumos"
+          fim={qtdResumos !== null && qtdResumos > 0 ? <span className="font-mono tabular-nums">{qtdResumos}</span> : undefined}
+          aberta={abertas.resumo}
+          onAlternar={alternar}
+        >
+          <ResumoConversa slug={dados.slug} gatilhoGerar={pedidoResumo} onQuantidade={setQtdResumos} />
         </Secao>
       )}
 
@@ -336,12 +342,6 @@ export function PainelCliente({
       {dono && (
         <Secao id="notas" titulo="Notas" fim={<EstadoNotas notas={notas} />} aberta={abertas.notas} onAlternar={alternar}>
           <NotesPanel notas={notas} nome={dados.nome} />
-        </Secao>
-      )}
-
-      {dono && (
-        <Secao id="copiloto" titulo="Copiloto" aberta={abertas.copiloto} onAlternar={alternar}>
-          <CopilotPanel slug={dados.slug} onDraft={onDraft} />
         </Secao>
       )}
 

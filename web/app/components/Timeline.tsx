@@ -197,7 +197,7 @@ export function Timeline({
   donoLogin = null,
   cabecalho,
   draft,
-  onAbrirCopiloto,
+  onPedirResumo,
   lastSeenInicial = null,
   participantes,
   atendenteNome = null,
@@ -217,8 +217,8 @@ export function Timeline({
   cabecalho: CabecalhoConversa;
   /** Rascunho do copiloto do painel para o compositor. */
   draft?: { text: string; nonce: number } | null;
-  /** O botão da IA no compositor abre o copiloto quando ele está desligado neste chat. */
-  onAbrirCopiloto?: () => void;
+  /** Dispara a geração de um novo resumo no painel lateral (menu de IA do compositor). */
+  onPedirResumo?: () => void;
   lastSeenInicial?: string | null;
   participantes?: ParticipanteGrupo[];
   atendenteNome?: string | null;
@@ -240,8 +240,8 @@ export function Timeline({
   const [showJump, setShowJump] = useState(false);
   const [mediaFilter, setMediaFilter] = useState("all");
   const [filtroAberto, setFiltroAberto] = useState(false);
-  // Pedido explícito de rascunho (botão da IA): vale para a mensagem que era a última no clique.
-  const [pedidoRascunho, setPedidoRascunho] = useState<{ id: string; n: number } | null>(null);
+  // Pedido explícito de rascunho ("Responder com IA" no menu do compositor): funciona mesmo com copiloto desligado.
+  const [pedidoRascunho, setPedidoRascunho] = useState<{ id: string; n: number; manual: boolean } | null>(null);
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [forwardMsg, setForwardMsg] = useState<MessageView | null>(null);
@@ -475,31 +475,30 @@ export function Timeline({
     return () => clearInterval(t);
   }, []);
 
-  // Alvo do rascunho automático (um por turno; mensagem antiga nunca dispara):
-  //  - última mensagem RECEBIDA → sugerir resposta;
-  //  - última mensagem MINHA parada há FOLLOWUP_AFTER_MS ou mais → sugerir acompanhamento.
-  // O botão da IA pede de novo para a última mensagem, mesmo fora dessas regras.
-  const suggest = useMemo<{ id: string; followup: boolean } | null>(() => {
+  // Alvo do rascunho:
+  //  - pedido explícito ("Responder com IA") funciona sempre, mesmo com copiloto desligado;
+  //  - automático (com copiloto ligado): última recebida ou última minha parada há >= FOLLOWUP_AFTER_MS.
+  const suggest = useMemo<{ id: string; followup: boolean; manual: boolean } | null>(() => {
+    if (pedidoRascunho?.manual) {
+      const alvo = messages.find((m) => m.id === pedidoRascunho.id);
+      if (alvo) return { id: alvo.id, followup: Boolean(alvo.fromMe), manual: true };
+    }
     if (!copilotOn) return null;
-    const last = messages[messages.length - 1];
+    const last = [...messages].reverse().find((m) => m.type !== "call");
     if (!last) return null;
-    if (pedidoRascunho?.id === last.id) return { id: last.id, followup: Boolean(last.fromMe) };
-    if (!last.fromMe) return { id: last.id, followup: false };
+    if (pedidoRascunho?.id === last.id) return { id: last.id, followup: Boolean(last.fromMe), manual: true };
+    if (!last.fromMe) return { id: last.id, followup: false, manual: false };
     const ageMs = agora - new Date(last.timestamp).getTime();
     if (ageMs < FOLLOWUP_AFTER_MS) return null;
-    return { id: last.id, followup: true };
+    return { id: last.id, followup: true, manual: false };
   }, [messages, copilotOn, agora, pedidoRascunho]);
 
   const pedirRascunho = useCallback(() => {
-    if (!copilotOn) {
-      onAbrirCopiloto?.();
-      return;
-    }
-    const last = messages[messages.length - 1];
+    const last = [...messages].reverse().find((m) => m.type !== "call");
     if (!last) return;
     liberarSugestao(last.id);
-    setPedidoRascunho((p) => ({ id: last.id, n: (p?.n ?? 0) + 1 }));
-  }, [copilotOn, messages, onAbrirCopiloto]);
+    setPedidoRascunho((p) => ({ id: last.id, n: (p?.n ?? 0) + 1, manual: true }));
+  }, [messages]);
 
   // Busca mensagens novas a cada 3 s (a tela atualiza sozinha). Só mexe no estado
   // quando a resposta muda de verdade: compara o corpo cru antes de parsear.
@@ -1136,6 +1135,7 @@ export function Timeline({
         onSent={aoEnviar}
         draft={draft}
         onPedirRascunho={rotas.recursos.copiloto ? pedirRascunho : undefined}
+        onPedirResumo={onPedirResumo}
         replyTo={replyTo}
         onCancelReply={() => setReplyTo(null)}
         participantes={cabecalho.tipo === "grupo" ? participantes : undefined}
@@ -1160,6 +1160,7 @@ export function Timeline({
                   slug={slug}
                   messageId={suggest.id}
                   followup={suggest.followup}
+                  manual={suggest.manual}
                   onUseDraft={usar}
                 />
               )

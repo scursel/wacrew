@@ -66,6 +66,7 @@ export function Composer({
   draft,
   rascunho,
   onPedirRascunho,
+  onPedirResumo,
   replyTo,
   onCancelReply,
   participantes,
@@ -85,6 +86,7 @@ export function Composer({
   draft?: { text: string; nonce: number } | null;
   rascunho?: (usar: (texto: string) => void) => ReactNode;
   onPedirRascunho?: () => void;
+  onPedirResumo?: () => void;
   replyTo?: ReplyTarget | null;
   onCancelReply?: () => void;
   participantes?: ParticipanteGrupo[];
@@ -106,6 +108,8 @@ export function Composer({
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingAttachment[]>([]);
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const [iaMenuOpen, setIaMenuOpen] = useState(false);
+  const iaMenuRef = useRef<HTMLDivElement>(null);
   const [respostas, setRespostas] = useState<RespostaPronta[]>([]);
   const [cursorPos, setCursorPos] = useState(0);
   const [pickerIndex, setPickerIndex] = useState(0);
@@ -121,6 +125,22 @@ export function Composer({
   const chunksRef = useRef<Blob[]>([]);
 
   const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!iaMenuOpen) return;
+    const onPointer = (e: PointerEvent) => {
+      if (!iaMenuRef.current?.contains(e.target as Node)) setIaMenuOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setIaMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [iaMenuOpen]);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const mentionsRef = useRef<Map<string, string>>(new Map()); // nome -> jid
   const pendingRef = useRef<PendingAttachment[]>([]);
@@ -612,6 +632,7 @@ export function Composer({
               setModoNota(true);
               setError(null);
               setEmojiOpen(false);
+              setIaMenuOpen(false);
             }}
             className={`inline-flex items-center gap-1.5 rounded-[6px] px-2.5 py-1 font-medium transition-colors ${
               modoNota ? "bg-warn-bg text-warn ring-1 ring-warn/35" : "text-fg-faint hover:text-fg"
@@ -874,12 +895,77 @@ export function Composer({
                 title="Inserir emoji"
                 aria-label="Inserir emoji"
                 aria-expanded={emojiOpen}
-                onClick={() => setEmojiOpen((v) => !v)}
+                onClick={() => {
+                  setIaMenuOpen(false);
+                  setEmojiOpen((v) => !v);
+                }}
                 disabled={semDestino || sending}
                 className="max-[860px]:h-10 max-[860px]:w-10"
               >
                 <Icone nome="smile" />
               </IconButton>
+
+              {(onPedirResumo || onPedirRascunho) && (
+                <div ref={iaMenuRef} className="relative">
+                  <IconButton
+                    size="sm"
+                    title="Ações de IA (Resumir / Responder com IA)"
+                    aria-label="Ações de IA"
+                    aria-haspopup="menu"
+                    aria-expanded={iaMenuOpen}
+                    active={iaMenuOpen}
+                    onClick={() => {
+                      setEmojiOpen(false);
+                      setIaMenuOpen((v) => !v);
+                    }}
+                    className="max-[860px]:h-10 max-[860px]:w-10"
+                  >
+                    <Icone nome="spark" />
+                  </IconButton>
+                  {iaMenuOpen && (
+                    <div
+                      role="menu"
+                      aria-label="Ações de IA"
+                      className="pop-in absolute bottom-full left-0 z-30 mb-1.5 w-56 rounded-[10px] border border-line bg-surface p-1.5 [box-shadow:var(--float)]"
+                    >
+                      {onPedirResumo && (
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            setIaMenuOpen(false);
+                            onPedirResumo();
+                          }}
+                          className="flex w-full items-start gap-2.5 rounded-[7px] px-2.5 py-2 text-left text-[13px] text-fg transition-colors hover:bg-surface-2"
+                        >
+                          <Icone nome="doc" tamanho={15} className="mt-0.5 shrink-0 text-id-ia" />
+                          <span className="min-w-0">
+                            <span className="block font-medium leading-tight">Resumir</span>
+                            <span className="mt-0.5 block text-[11.5px] text-fg-faint">Gera resumo e salva no histórico</span>
+                          </span>
+                        </button>
+                      )}
+                      {onPedirRascunho && (
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => {
+                            setIaMenuOpen(false);
+                            onPedirRascunho();
+                          }}
+                          className="flex w-full items-start gap-2.5 rounded-[7px] px-2.5 py-2 text-left text-[13px] text-fg transition-colors hover:bg-surface-2"
+                        >
+                          <Icone nome="spark" tamanho={15} className="mt-0.5 shrink-0 text-id-ia" />
+                          <span className="min-w-0">
+                            <span className="block font-medium leading-tight">Responder com IA</span>
+                            <span className="mt-0.5 block text-[11.5px] text-fg-faint">Sugere uma resposta para revisão</span>
+                          </span>
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {hasMic && recState === "idle" && (
                 <IconButton
@@ -891,18 +977,6 @@ export function Composer({
                   className="max-[860px]:h-10 max-[860px]:w-10"
                 >
                   <Icone nome="mic" />
-                </IconButton>
-              )}
-
-              {onPedirRascunho && (
-                <IconButton
-                  size="sm"
-                  title="Pedir um rascunho à IA"
-                  aria-label="Pedir um rascunho à IA"
-                  onClick={onPedirRascunho}
-                  className="max-[860px]:h-10 max-[860px]:w-10"
-                >
-                  <Icone nome="spark" />
                 </IconButton>
               )}
             </>

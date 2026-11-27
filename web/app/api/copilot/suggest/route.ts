@@ -7,6 +7,8 @@ import {
   isCopilotEnabled,
 } from "@/lib/copilot";
 import { readGroupMessages } from "@/lib/data";
+import { resolverIrmaosDm } from "@/lib/dm-conversa";
+import { fundirMensagens } from "@/lib/dm-irmaos";
 import { resolveProvider, streamCopilot, temDestino } from "@/lib/llm";
 
 export const runtime = "nodejs";
@@ -17,6 +19,8 @@ interface SuggestPost {
   messageId?: string;
   /** Força nova chamada ignorando o cache de processo (botão "regenerar"). */
   refresh?: boolean;
+  /** Pedido explícito do operador no compositor: funciona mesmo com copiloto desligado na conversa. */
+  manual?: boolean;
 }
 
 interface SuggestMeta {
@@ -52,7 +56,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
   }
 
-  const { slug, messageId, refresh } = body;
+  const { slug, messageId, refresh, manual } = body;
   if (typeof slug !== "string" || !slug) {
     return NextResponse.json({ error: "slug inválido" }, { status: 400 });
   }
@@ -60,8 +64,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "messageId inválido" }, { status: 400 });
   }
 
-  // Opt-in: grupo sem copiloto ligado nunca chama o provedor.
-  if (!(await isCopilotEnabled(slug))) {
+  // Sugestão automática respeita o opt-in; pedido explícito ("Responder com IA") funciona sempre.
+  if (!manual && !(await isCopilotEnabled(slug))) {
     return NextResponse.json({ error: "copilot_disabled" }, { status: 403 });
   }
 
@@ -70,8 +74,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "no_provider" }, { status: 503 });
   }
 
-  // Resolve o balão-alvo: precisa existir, ser RECEBIDO (não-meu) e sem resposta minha depois.
-  const [all, contacts] = await Promise.all([readGroupMessages(slug), buildContacts()]);
+  // Resolve o balão-alvo (fundindo irmãos de DM se houver).
+  const [{ irmaos }, contacts] = await Promise.all([resolverIrmaosDm(slug), buildContacts()]);
+  const listas = await Promise.all(irmaos.map((s) => readGroupMessages(s)));
+  const all = listas.length > 1 ? fundirMensagens(listas) : (listas[0] ?? []);
   const idx = all.findIndex((m) => m.id === messageId);
   if (idx === -1) {
     return NextResponse.json({ error: "alvo não encontrado" }, { status: 404 });
@@ -79,23 +85,25 @@ export async function POST(req: Request) {
   const target = all[idx];
   // Modo: alvo RECEBIDO (não-meu) → sugerir resposta; alvo MEU parado → follow-up.
   const isFollowup = target.fromMe === true;
-  if (isFollowup) {
-    // Precisa ser a última mensagem (ninguém respondeu depois)…
-    if (idx !== all.length - 1) {
-      return NextResponse.json({ error: "alvo já respondido" }, { status: 409 });
-    }
-    // …e ter ficado parada tempo suficiente (evita follow-up logo após enviar).
-    const ageMs = Date.now() - new Date(target.timestamp).getTime();
-    if (ageMs < FOLLOWUP_AFTER_MS) {
-      return NextResponse.json({ error: "muito cedo para follow-up" }, { status: 409 });
-    }
-  } else {
-    // Já respondi depois do alvo? (mensagem minha após ele) → não sugere.
-    const respondedAfter = all
-      .slice(idx + 1)
-      .some((m) => m.fromMe || roleOf(contacts, numberFromJid(m.sender)) === "me");
-    if (respondedAfter) {
-      return NextResponse.json({ error: "alvo já respondido" }, { status: 409 });
+  if (!manual) {
+    if (isFollowup) {
+      // Precisa ser a última mensagem (ninguém respondeu depois)…
+      if (idx !== all.length - 1) {
+        return NextResponse.json({ error: "alvo já respondido" }, { status: 409 });
+      }
+      // …e ter ficado parada tempo suficiente (evita follow-up logo após enviar).
+      const ageMs = Date.now() - new Date(target.timestamp).getTime();
+      if (ageMs < FOLLOWUP_AFTER_MS) {
+        return NextResponse.json({ error: "muito cedo para follow-up" }, { status: 409 });
+      }
+    } else {
+      // Já respondi depois do alvo? (mensagem minha após ele) → não sugere.
+      const respondedAfter = all
+        .slice(idx + 1)
+        .some((m) => m.fromMe || roleOf(contacts, numberFromJid(m.sender)) === "me");
+      if (respondedAfter) {
+        return NextResponse.json({ error: "alvo já respondido" }, { status: 409 });
+      }
     }
   }
   const action = isFollowup ? "followup" : "sugerir";
