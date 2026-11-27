@@ -1,7 +1,10 @@
 import { buildContacts } from "./contacts";
 import { type CompactMsg, compact } from "./context";
 import { readGroupMessages } from "./data";
+import { resolverIrmaosDm } from "./dm-conversa";
+import { fundirMensagens } from "./dm-irmaos";
 import { readBoundMemory, readGroupMemory } from "./memory";
+import { type EntradaResumo, juntarHistoricosResumos, lerResumos } from "./resumo-conversa";
 import { readTriage } from "./triage";
 
 // Este módulo é MODEL-AGNOSTIC de propósito: monta contexto + prompt num shape neutro
@@ -10,6 +13,9 @@ import { readTriage } from "./triage";
 
 /** Teto de mensagens recentes injetadas no contexto (corte de token). */
 export const COPILOT_CONTEXT_LIMIT = 60;
+
+/** Quantos resumos anteriores entram como memória cronológica de longo prazo. */
+export const RESUMOS_CONTEXT_LIMIT = 5;
 
 /** Teto de tokens de saída — resumo e rascunho são curtos. */
 export const COPILOT_MAX_TOKENS = 2048;
@@ -33,25 +39,30 @@ export interface GroupContext {
   groupMemory: string;
   /** Memória do Claude Code (compartilhada entre grupos, mantida nas sessões). */
   sharedMemory: string;
+  /** Últimos resumos gerados para esta conversa (mais recente primeiro), para contexto de retorno. */
+  resumos: EntradaResumo[];
   messages: CompactMsg[];
 }
 
 /**
- * Monta o contexto do grupo pro prompt: as duas camadas de memória (compartilhada do
- * Claude Code + curada do grupo) + últimas N mensagens (desde o `lastSeen` se for mais
- * recente e couber em N), compactadas via `compact()`. Só texto + transcrições já
- * feitas — sem mídia, sem transcrever pendentes (custo/token).
+ * Monta o contexto do chat pro prompt: as duas camadas de memória (compartilhada +
+ * curada), os últimos resumos salvos da conversa (memória de longo prazo) e as
+ * últimas N mensagens (fundindo irmãos de DM, sem cortar pelo `lastSeen` para não
+ * perder contexto quando chega só uma mensagem nova).
  */
 export async function buildContext(slug: string): Promise<GroupContext> {
-  let msgs = await readGroupMessages(slug);
-  const triage = await readTriage();
-  const since = triage.lastSeen[slug];
-  // Corta por lastSeen só quando isso reduz o conjunto (mantém o teto de N como limite duro).
-  if (since) {
-    const recent = msgs.filter((m) => m.timestamp >= since);
-    if (recent.length && recent.length <= COPILOT_CONTEXT_LIMIT) msgs = recent;
-  }
-  msgs = msgs.slice(-COPILOT_CONTEXT_LIMIT);
+  const [{ irmaos }, triage, todosResumos] = await Promise.all([
+    resolverIrmaosDm(slug),
+    readTriage(),
+    lerResumos(),
+  ]);
+  const listas = await Promise.all(irmaos.map((s) => readGroupMessages(s)));
+  const todas = listas.length > 1 ? fundirMensagens(listas) : (listas[0] ?? []);
+  const msgs = todas.slice(-COPILOT_CONTEXT_LIMIT);
+
+  const resumos = juntarHistoricosResumos(
+    irmaos.map((s) => (Object.hasOwn(todosResumos, s) ? todosResumos[s] : null)),
+  ).slice(0, RESUMOS_CONTEXT_LIMIT);
 
   const boundDirs = triage.memorySources[slug] ?? [];
   const [c, groupMemory, sharedMemory] = await Promise.all([
@@ -63,6 +74,7 @@ export async function buildContext(slug: string): Promise<GroupContext> {
   return {
     groupMemory,
     sharedMemory,
+    resumos,
     messages: msgs.map((m) => compact(m, c)),
   };
 }
@@ -104,11 +116,26 @@ export interface BuildPromptArgs {
   groupMemory: string;
   /** Memória do Claude Code (compartilhada), já formatada como texto. */
   sharedMemory: string;
+  /** Últimos resumos salvos da conversa (referência histórica datada). */
+  resumos?: EntradaResumo[];
   messages: CompactMsg[];
   action?: CopilotAction;
   chat: ChatMessage[];
   /** Timestamp ISO do balão-alvo (ação "sugerir"): marca qual msg do cliente responder. */
   targetTimestamp?: string;
+}
+
+/** "27/11/2026 10:52" em horário de Brasília (UTC-3), para datar resumos no prompt. */
+function dataResumoBrt(iso: string): string {
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) return iso;
+  const d = new Date(ms - 3 * 60 * 60 * 1000);
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const yyyy = d.getUTCFullYear();
+  const hh = String(d.getUTCHours()).padStart(2, "0");
+  const min = String(d.getUTCMinutes()).padStart(2, "0");
+  return `${dd}/${mm}/${yyyy} ${hh}:${min}`;
 }
 
 /** Bloco de system neutro. `cache` marca o ponto de cache (provedores que suportam usam). */
@@ -134,6 +161,7 @@ export interface NeutralPrompt {
 export function buildPrompt({
   groupMemory,
   sharedMemory,
+  resumos = [],
   messages,
   action,
   chat,
@@ -152,7 +180,19 @@ export function buildPrompt({
     { text: groupBlock, cache: true },
   ];
 
+  // Resumos anteriores em ordem cronológica (mais antigo -> mais recente) como referência de longo prazo.
+  const blocoResumos =
+    resumos.length > 0
+      ? `HISTÓRICO DE RESUMOS ANTERIORES DESTA CONVERSA (referência cronológica de atendimentos passados; se houver conflito com as mensagens recentes abaixo, as mensagens recentes SEMPRE prevalecem):\n` +
+        [...resumos]
+          .sort((a, b) => a.em.localeCompare(b.em))
+          .map((r) => `- [${dataResumoBrt(r.em)}] ${r.texto.replace(/\s+/g, " ").trim()}`)
+          .join("\n") +
+        "\n\n"
+      : "";
+
   const contexto =
+    blocoResumos +
     `CONTEXTO DO GRUPO — últimas ${messages.length} mensagens (mais recentes por último):\n` +
     JSON.stringify(messages, null, 2);
 

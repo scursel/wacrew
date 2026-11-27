@@ -109,11 +109,11 @@ export async function POST(req: Request) {
   const action = isFollowup ? "followup" : "sugerir";
   if (!temDestino(provider, action)) return NextResponse.json({ error: "no_provider" }, { status: 503 });
 
-  const { groupMemory, sharedMemory, messages } = await buildContext(slug);
+  const { groupMemory, sharedMemory, resumos, messages } = await buildContext(slug);
 
   // Assinatura do contexto: o que invalida a sugestão se mudar.
   const cacheKey = `${slug}:${messageId}`;
-  const signature = `${groupMemory.length}:${sharedMemory.length}:${all
+  const signature = `${groupMemory.length}:${sharedMemory.length}:${resumos.map((r) => r.em).join(",")}:${all
     .slice(0, idx + 1)
     .map((m) => m.id)
     .join(",")}`;
@@ -134,6 +134,7 @@ export async function POST(req: Request) {
   const prompt = buildPrompt({
     groupMemory,
     sharedMemory,
+    resumos,
     messages,
     action,
     chat: [],

@@ -62,8 +62,8 @@ export async function POST(req: Request) {
   }
   if (!temDestino(provider, action)) return NextResponse.json({ error: "no_provider" }, { status: 503 });
 
-  const { groupMemory, sharedMemory, messages } = await buildContext(slug);
-  const prompt = buildPrompt({ groupMemory, sharedMemory, messages, action, chat });
+  const { groupMemory, sharedMemory, resumos, messages } = await buildContext(slug);
+  const prompt = buildPrompt({ groupMemory, sharedMemory, resumos, messages, action, chat });
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
