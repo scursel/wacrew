@@ -110,7 +110,12 @@ bloco); **`citacao`/`citacao_de`** (reply — o texto citado e quem mandou).
 ## Ferramentas do repo
 
 - Gerenciador: **npm** (NUNCA pnpm — quebra o node_modules). Subir tudo local: `npm run dev`.
-- Testes: `npm test` (vitest). Deploy da nuvem: `railway up --service coletor --detach`
-  (merge na main NÃO redeploya sozinho).
+- Testes: `npm test` (vitest). Produção roda no Coolify, serviço `wacrew`: após o push,
+  reconstrua e atualize o serviço pela configuração existente do Coolify. Nesta máquina,
+  o compose fica em `/data/coolify/services/rifzrfkhm3uzvlvmmw4rc7va/docker-compose.yml`
+  e usa este repositório como contexto de build. Execute:
+  `sudo sh -c 'cd /data/coolify/services/rifzrfkhm3uzvlvmmw4rc7va && docker compose up -d --build'`.
+  Confira o healthcheck do container e a resposta
+  do painel; preserve o volume existente. Push na main não garante deploy automático.
 - Escritório 2D (`/escritorio`): planta `50×36` multi-salas (`scripts/gerar-escritorio-modern-loft.cjs`),
   e bundle de sprites em `web/public/assets/office-sprites-bundle.json` (`scripts/bake-aioffice-sprites.cjs`).

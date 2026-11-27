@@ -1,6 +1,6 @@
 #!/bin/sh
 # Sobe o Tailscale (se TS_AUTHKEY estiver setada) e depois coletor + painel.
-# Em userspace networking (Railway/Cloud Run não têm /dev/net/tun), o painel
+# Em ambientes sem /dev/net/tun, com userspace networking, o painel
 # é exposto na tailnet via `tailscale serve` — SÓ na rede privada, sem domínio
 # público. Sem TS_AUTHKEY, segue sem Tailscale (ex.: só com domínio + Basic Auth).
 

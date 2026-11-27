@@ -36,7 +36,7 @@ export function isBlockedIp(ip: string): boolean {
     if (a === 172 && b >= 16 && b <= 31) return true; // 172.16/12
     if (a === 192 && b === 168) return true; // 192.168/16
     if (a === 169 && b === 254) return true; // link-local + metadados da nuvem
-    if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT 100.64/10 (Tailscale/Railway)
+    if (a === 100 && b >= 64 && b <= 127) return true; // CGNAT 100.64/10 (inclui Tailscale)
     return false;
   }
   // IPv6: loopback, unspecified, link-local (fe80::/10) e ULA (fc00::/7).

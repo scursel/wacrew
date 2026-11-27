@@ -10,9 +10,8 @@
 </p>
 
 <p align="center">
-  <a href="https://railway.com/deploy/wacrew?referralCode=8ZIi5q&utm_medium=integration&utm_source=template&utm_campaign=readme"><img alt="Deploy on Railway" src="https://railway.com/button.svg" height="32"></a>
   <a href="https://www.hostinger.com/br/servidor-vps?REFERRALCODE=ORISHODIRBUH"><img alt="Implantar na Hostinger" src="docs/assets/deploy-hostinger-pt.svg" height="32"></a>
-  <br><sub>Um clique na Railway, VPS com 20% de desconto na Hostinger (links de indicação que ajudam a manter o projeto) ou <a href="#começar">rode na sua máquina</a>.</sub>
+  <br><sub>VPS com 20% de desconto na Hostinger (link de indicação que ajuda a manter o projeto) ou <a href="#começar">rode na sua máquina</a>.</sub>
 </p>
 
 <p align="center">
@@ -85,7 +84,7 @@ Mais telas em [`docs/screenshots/`](docs/screenshots): acesso da equipe, notific
 - **Painel** (`web/`): Next.js 16 + React 19. Caixa de entrada, conversa, clientes, painel, agenda, equipe, escritório 2D e configurações. Atualiza ao vivo por SSE.
 - **Servidor MCP** (`web/mcp/server.ts`): 37 ferramentas sobre os mesmos dados, para Claude Code, Codex, Antigravity, Gemini CLI, Qwen Code ou qualquer cliente MCP.
 - **Transcrição** (`transcriber/`): Whisper large-v3 via MLX, carregado sob demanda e liberado quando ocioso. Fora do Mac, use `TRANSCRIBE_BACKEND=openrouter`.
-- **Local ou nuvem.** Rode tudo na sua máquina, ou suba o coletor e o painel 24 horas com o `Dockerfile` incluso (tem `railway.json` pronto). O MCP local pode ler direto do painel na nuvem (`WAC_MCP_REMOTE=1`), baixando a mídia sob demanda.
+- **Local ou nuvem.** Rode tudo na sua máquina, ou suba o coletor e o painel 24 horas com o `Dockerfile` incluso, inclusive no Coolify. O MCP local pode ler direto do painel na nuvem (`WAC_MCP_REMOTE=1`), baixando a mídia sob demanda.
 
 ## Começar
 
@@ -124,9 +123,9 @@ docker run -d --name wacrew --restart unless-stopped \
 
 Depois abra `http://localhost:3000/config` para escanear o QR.
 
-<a href="https://www.hostinger.com/br/servidor-vps?REFERRALCODE=ORISHODIRBUH"><img alt="Implantar na Hostinger" src="docs/assets/deploy-hostinger-pt.svg" height="32"></a> <a href="https://railway.com/deploy/wacrew?referralCode=8ZIi5q&utm_medium=integration&utm_source=template&utm_campaign=generic"><img alt="Deploy on Railway" src="https://railway.com/button.svg" height="32"></a>
+<a href="https://www.hostinger.com/br/servidor-vps?REFERRALCODE=ORISHODIRBUH"><img alt="Implantar na Hostinger" src="docs/assets/deploy-hostinger-pt.svg" height="32"></a>
 
-<sub>Links de indicação: você ganha desconto ou créditos, e o projeto recebe uma comissão que ajuda a mantê-lo. Na Railway o template já cria o volume, o login e uma senha gerada para você.</sub>
+<sub>Link de indicação: você ganha desconto, e o projeto recebe uma comissão que ajuda a mantê-lo.</sub>
 
 **Outras nuvens.** Use a imagem pronta `ghcr.io/sumioshi/wacrew` ou faça o build do `Dockerfile` em qualquer servidor com um volume em `/data`. Defina `PANEL_USER` e `PANEL_PASS` para proteger o painel com login; sem elas o painel fica aberto, o que só serve no localhost.
 

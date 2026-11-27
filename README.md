@@ -10,9 +10,8 @@
 </p>
 
 <p align="center">
-  <a href="https://railway.com/deploy/wacrew?referralCode=8ZIi5q&utm_medium=integration&utm_source=template&utm_campaign=readme"><img alt="Deploy on Railway" src="https://railway.com/button.svg" height="32"></a>
   <a href="https://www.hostinger.com/vps-hosting?REFERRALCODE=ORISHODIRBUH"><img alt="Deploy on Hostinger" src="docs/assets/deploy-hostinger-en.svg" height="32"></a>
-  <br><sub>One click on Railway, a VPS with 20% off on Hostinger (referral links that help fund the project), or <a href="#quick-start">run it on your machine</a>.</sub>
+  <br><sub>A VPS with 20% off on Hostinger (a referral link that helps fund the project), or <a href="#quick-start">run it on your machine</a>.</sub>
 </p>
 
 <p align="center">
@@ -85,7 +84,7 @@ More screens in [`docs/screenshots/`](docs/screenshots): team access, notificati
 - **Panel** (`web/`): Next.js 16 + React 19. Inbox, conversation view, clients, dashboard, calendar, team, 2D office, settings. Live updates over SSE.
 - **MCP server** (`web/mcp/server.ts`): 37 tools over the same data, for Claude Code, Codex, Antigravity, Gemini CLI, Qwen Code or any MCP client.
 - **Transcriber** (`transcriber/`): Whisper large-v3 via MLX, loaded on demand and released when idle. Off a Mac, set `TRANSCRIBE_BACKEND=openrouter`.
-- **Local or cloud.** Run everything on your machine, or deploy the collector and panel 24/7 with the included `Dockerfile` (a `railway.json` is provided). The local MCP can read straight from the cloud panel (`WAC_MCP_REMOTE=1`), downloading media on demand.
+- **Local or cloud.** Run everything on your machine, or deploy the collector and panel 24/7 with the included `Dockerfile`, including on Coolify. The local MCP can read straight from the cloud panel (`WAC_MCP_REMOTE=1`), downloading media on demand.
 
 ## Quick start
 
@@ -124,9 +123,9 @@ docker run -d --name wacrew --restart unless-stopped \
 
 Then open `http://localhost:3000/config` to scan the QR code.
 
-<a href="https://www.hostinger.com/vps-hosting?REFERRALCODE=ORISHODIRBUH"><img alt="Deploy on Hostinger" src="docs/assets/deploy-hostinger-en.svg" height="32"></a> <a href="https://railway.com/deploy/wacrew?referralCode=8ZIi5q&utm_medium=integration&utm_source=template&utm_campaign=generic"><img alt="Deploy on Railway" src="https://railway.com/button.svg" height="32"></a>
+<a href="https://www.hostinger.com/vps-hosting?REFERRALCODE=ORISHODIRBUH"><img alt="Deploy on Hostinger" src="docs/assets/deploy-hostinger-en.svg" height="32"></a>
 
-<sub>Referral links: you get a discount or credits, and the project earns a commission that helps keep it maintained. On Railway the template sets up the volume, the login and a generated password for you.</sub>
+<sub>Referral link: you get a discount, and the project earns a commission that helps keep it maintained.</sub>
 
 **Other clouds.** Run the prebuilt image `ghcr.io/sumioshi/wacrew` or build the `Dockerfile` on any host with a volume at `/data`. Set `PANEL_USER` and `PANEL_PASS` to protect the panel with login; without them the panel is open, which is only fine on localhost.
 

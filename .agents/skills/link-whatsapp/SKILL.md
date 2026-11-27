@@ -7,7 +7,7 @@ description: Liga o repositório atual a um grupo ou DM de WhatsApp (cria .claud
 
 Siga **exatamente** o passo a passo canônico em `.claude/commands/link-whatsapp.md` na raiz
 deste repositório (`whatsapp-automation`) — ele é a fonte única do fluxo: descobrir o painel
-(local → Railway), listar os chats, confirmar os campos com o operador e gravar o link.
+(local → painel configurado na nuvem), listar os chats, confirmar os campos com o operador e gravar o link.
 
 Duas adaptações quando rodando fora do Claude Code (ex.: Codex):
 

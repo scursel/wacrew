@@ -277,8 +277,8 @@ o que perdeu no período off via `WAC_CLOUD_URL`/`WAC_CLOUD_USER`/`WAC_CLOUD_PAS
   `ler_mensagens`/`responder` aceitam o nome novo e traduzem pro slug estável sozinhos.
   Se um chat parecer "mudo"/congelado, suspeite de rename ANTES de achar que o sync quebrou.
   Diretório duplicado de rename antigo (anterior à feature): fundir com
-  `npm run migrar-slug -- <slug-canonico> <slug-duplicado>` (na nuvem: via `railway ssh`,
-  `cd /app && npx tsx scripts/migrar-slug.ts ...`).
+  `npm run migrar-slug -- <slug-canonico> <slug-duplicado>`; na nuvem, execute o mesmo
+  comando no container do serviço WACrew no Coolify, no diretório `/app`.
 
 ## Troubleshooting
 

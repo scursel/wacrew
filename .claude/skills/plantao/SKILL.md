@@ -9,7 +9,7 @@ description: Use quando o operador pedir pra "ficar de olho", "monitorar", "me a
 
 Arma **UM** Monitor do harness que acorda o agente a cada mensagem nova de um chat,
 via **SSE da nuvem** — funciona com o Mac "limpo" (não precisa de coletor local, `npm run dev`,
-pm2 nem sync). O coletor 24/7 é o da nuvem (Railway); o Mac só segura uma conexão HTTP.
+pm2 nem sync). O coletor 24/7 é o da nuvem (Coolify); o Mac só segura uma conexão HTTP.
 
 REPO = raiz do repositório do WACrew, ou a pasta do plugin quando instalado como plugin (no
 Antigravity, `~/.gemini/config/plugins/wacrew`). Use paths ABSOLUTOS (a sessão pode estar em

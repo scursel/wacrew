@@ -564,7 +564,7 @@ async function computarEstadoEscritorio(): Promise<EstadoEscritorioPayload> {
     }
   }
 
-  // Execução direta no servidor da nuvem (Railway) ou local: usa o cache de 60s do dashboard + caixaDeEntrada
+  // Execução direta no servidor da nuvem ou local: usa o cache de 60s do dashboard + caixaDeEntrada
   const [links, dash, caixa, groupsSummary, triage] = await Promise.all([
     readLinks().catch(() => ({} as LinksMap)),
     montarDashboardAtual(),

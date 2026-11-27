@@ -198,13 +198,23 @@ demais pro contrato ou perto de renovar: tool `dashboard` (ou a tela `/dashboard
 
 ## Mídia na nuvem (`midia_pendente`) — NÃO é erro
 
-Tem dois coletores: o do Mac (local) e o da nuvem (Railway, histórico 24/7). A nuvem é a fonte
+Tem dois coletores: o local e o da nuvem (Coolify, histórico 24/7). A nuvem é a fonte
 completa; o Mac só tem o que capturou ligado. Quando uma mensagem de mídia vem com
 `midia_pendente: true` (sem arquivo local), com a **nuvem ligada** (`WAC_CLOUD_*` no `.env`) isso é
 **normal**: o arquivo está na nuvem e `ver_imagem`/`ver_video`/`transcrever`/`ler_documento` baixam
 **sob demanda** (via `ensureLocalMedia`). Então **não se incomode com `midia_pendente`** — chame a
 tool de mídia normalmente, ela busca da nuvem. Só num setup 100% local (sem `WAC_CLOUD_*`) é que
 `midia_pendente` significa "essa mídia não foi capturada aqui".
+
+## Deploy de produção
+
+O serviço `wacrew` roda no Coolify. Após o push, reconstrua e atualize o serviço pela
+configuração existente. Nesta máquina, o compose fica em
+`/data/coolify/services/rifzrfkhm3uzvlvmmw4rc7va/docker-compose.yml` e usa este
+repositório como contexto de build. Execute
+`sudo sh -c 'cd /data/coolify/services/rifzrfkhm3uzvlvmmw4rc7va && docker compose up -d --build'`.
+Confira o healthcheck do container e a resposta do painel, e
+preserve o volume existente. Push na main não garante deploy automático.
 
 ## Vídeo: `assistir_video` (MCP) e a skill `watch`
 

@@ -15,15 +15,13 @@ Caminho canônico — siga nesta ordem, não improvise:
    e `https://github.com/owner/repo.git`). Se não houver remoto, `github` fica vazio e o
    agente de triagem não roda pra este chat até existir.
 
-2. **Descubra o painel (híbrido: local → Railway).** Nunca hardcode URL nem credenciais — descubra
+2. **Descubra o painel (híbrido: local → nuvem).** Nunca hardcode URL nem credenciais — descubra
    em runtime, nesta ordem:
    - **Local:** `curl -s --max-time 3 http://localhost:3000/api/links`. Se responder JSON, use
      `PANEL=http://localhost:3000` sem auth.
-   - **Railway (se o local estiver fora):** use o MCP `railway` — `list_projects`, ache o projeto
-     do coletor de WhatsApp (ex.: `whatsapp-collector`), depois `list_services` e `list_variables`
-     do serviço do painel/coletor. Das variáveis, tire:
-     `RAILWAY_PUBLIC_DOMAIN` (→ `PANEL=https://<domínio>`) e `PANEL_USER`/`PANEL_PASS`
-     (→ `curl -u "$PANEL_USER:$PANEL_PASS"` em toda chamada).
+   - **Nuvem (se o local estiver fora):** use `WAC_CLOUD_URL` e as credenciais
+     `WAC_CLOUD_USER`/`WAC_CLOUD_PASS` da configuração local, quando disponíveis.
+     O serviço de produção deste projeto roda no Coolify. Não exponha credenciais em logs.
    - Se nenhum dos dois responder, pule direto pro fallback do passo 6 (lado do repo apenas).
 
 3. **Liste os chats disponíveis.** `curl -s [auth] $PANEL/api/links` → campo `chats` (cada um:
@@ -69,7 +67,7 @@ Caminho canônico — siga nesta ordem, não improvise:
    - Avise o usuário: o índice central (painel) **não** foi atualizado e por quê (fora do ar, ou
      validação de `repoPath` do painel na nuvem).
 
-7. **Confirme ao usuário** o que foi gravado (slug, repoPath, painel usado — local ou Railway — e
+7. **Confirme ao usuário** o que foi gravado (slug, repoPath, painel usado — local ou nuvem — e
    se o central foi indexado ou ficou pendente).
 
 Regra: este comando só **cria/atualiza** o link. Não envie mensagem, não mexa em outra config.
