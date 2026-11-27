@@ -1,6 +1,6 @@
 import { cache } from 'react';
 import { desdeQuando, midiaDaConversa, type PainelCliente, pessoasDaConversa, resumoContrato, rotuloSinal, chaveDia } from './caixa';
-import { buildContacts, displayNameOf, roleOf } from './contacts';
+import { buildContacts, displayNameOf, pessoaDe, roleOf } from './contacts';
 import { readContratos } from './contratos';
 import { explicarSinal, montarDashboard } from './dashboard';
 import type { MessageRecord } from './data';
@@ -27,6 +27,8 @@ export async function dadosDoPainel(b: Base, triage: TriageState | null): Promis
   const pessoas = pessoasDaConversa(b.registros, {
     papel: (id) => roleOf(contatos, id),
     nome: (senderName, id) => displayNameOf(contatos, senderName, id),
+    // LID e telefone da mesma pessoa viram uma linha só.
+    chave: (id) => pessoaDe(contatos, id),
   });
   const base = {
     slug: b.slug,

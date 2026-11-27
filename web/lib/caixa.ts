@@ -666,25 +666,35 @@ export interface Pessoa {
   ultimaEm: string;
 }
 
-/** Quem escreveu na conversa (fora a própria conta), mais ativo primeiro. */
+/**
+ * Quem escreveu na conversa (fora a própria conta), mais ativo primeiro. A
+ * `chave` junta os ids da mesma pessoa (LID e telefone); por padrão, o id é a
+ * chave.
+ */
 export function pessoasDaConversa(
   registros: Array<{ sender: string; senderName: string; timestamp: string; fromMe?: boolean }>,
-  opts: { papel: (id: string) => Pessoa['papel']; nome: (senderName: string, id: string) => string },
+  opts: {
+    papel: (id: string) => Pessoa['papel'];
+    nome: (senderName: string, id: string) => string;
+    chave?: (id: string) => string;
+  },
 ): Pessoa[] {
-  const porId = new Map<string, Pessoa>();
+  const chave = opts.chave ?? ((id: string) => id);
+  const porPessoa = new Map<string, Pessoa>();
   for (const r of registros) {
     if (r.fromMe) continue;
     const id = (r.sender.split('@')[0] ?? '').split(':')[0] ?? '';
     if (!id) continue;
-    const p = porId.get(id);
+    const k = chave(id);
+    const p = porPessoa.get(k);
     if (p) {
       p.mensagens += 1;
       if (r.timestamp > p.ultimaEm) p.ultimaEm = r.timestamp;
     } else {
-      porId.set(id, { id, nome: opts.nome(r.senderName, id), papel: opts.papel(id), mensagens: 1, ultimaEm: r.timestamp });
+      porPessoa.set(k, { id: k, nome: opts.nome(r.senderName, id), papel: opts.papel(id), mensagens: 1, ultimaEm: r.timestamp });
     }
   }
-  return [...porId.values()]
+  return [...porPessoa.values()]
     .filter((p) => p.papel !== 'me')
     .sort((a, b) => b.mensagens - a.mensagens || a.nome.localeCompare(b.nome, 'pt-BR'));
 }

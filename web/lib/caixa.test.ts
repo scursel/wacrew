@@ -492,6 +492,26 @@ describe('pessoasDaConversa', () => {
       { id: '2', nome: 'Juliana', papel: 'client', mensagens: 1, ultimaEm: '2026-10-02T10:00:00Z' },
     ]);
   });
+
+  it('junta LID e telefone da mesma pessoa pela chave', () => {
+    const pessoas = pessoasDaConversa(
+      [
+        r('111@lid', 'Itiel', '2026-10-01T10:00:00Z'),
+        r('5511999999999@s.whatsapp.net', 'Itiel', '2026-10-02T10:00:00Z'),
+        r('111@lid', 'Itiel', '2026-10-03T10:00:00Z'),
+        r('222@lid', 'Carla', '2026-10-04T10:00:00Z'),
+      ],
+      {
+        papel: () => 'client',
+        nome: (n) => n,
+        chave: (id) => (id === '111' ? '5511999999999' : id),
+      },
+    );
+    expect(pessoas).toEqual([
+      { id: '5511999999999', nome: 'Itiel', papel: 'client', mensagens: 3, ultimaEm: '2026-10-03T10:00:00Z' },
+      { id: '222', nome: 'Carla', papel: 'client', mensagens: 1, ultimaEm: '2026-10-04T10:00:00Z' },
+    ]);
+  });
 });
 
 describe('midiaDaConversa', () => {
