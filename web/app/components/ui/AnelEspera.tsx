@@ -2,10 +2,10 @@ import { Fragment } from "react";
 import { formatarEspera, fracaoAnel, nivelEspera } from "@/lib/aparencia";
 import { cn } from "./cn";
 
-const COR = { neutro: "text-fg-faint", atencao: "text-warn", urgente: "text-danger" } as const;
+const COR = { neutro: "text-ok", atencao: "text-warn", urgente: "text-danger" } as const;
 const CIRCUNFERENCIA = 2 * Math.PI * 6;
 
-/** Tempo de espera: anel que enche até 4 h (cheio, ganha miolo) e o tempo em "5h 12m". */
+/** Espera em verde, âmbar e vermelho: anel que enche até 4 h e tempo em "5h 12m". */
 export function AnelEspera({ ms, className }: { ms: number; className?: string }) {
   const fracao = fracaoAnel(ms);
   const partes = formatarEspera(ms);

@@ -16,7 +16,7 @@ export type DadosCaixa = DadosFila;
 
 const CHAVE_VISTA = "wac-caixa-vista";
 const CIRCUNFERENCIA = 2 * Math.PI * 6;
-const COR_NIVEL = { neutro: "text-fg-faint", atencao: "text-warn", urgente: "text-danger" } as const;
+const COR_NIVEL = { neutro: "text-ok", atencao: "text-warn", urgente: "text-danger" } as const;
 const VISTAS: VistaFila[] = ["fila", "esperando", "departamento", "minhas", "ia", "resolvidas", "adiadas", "nao_lidas", "todas"];
 const PAGE_SIZE = 80;
 

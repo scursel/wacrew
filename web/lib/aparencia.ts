@@ -61,7 +61,7 @@ const LIMITE_URGENTE = 4 * 60 * MIN;
 
 export type NivelEspera = 'neutro' | 'atencao' | 'urgente';
 
-/** Régua de espera: neutro até 30 min, âmbar até 4 h, vermelho depois. */
+/** Régua de espera: neutro (verde) antes de 30 min, âmbar até 4 h, vermelho depois. */
 export function nivelEspera(ms: number): NivelEspera {
   if (!(ms >= LIMITE_ATENCAO)) return 'neutro';
   return ms <= LIMITE_URGENTE ? 'atencao' : 'urgente';
