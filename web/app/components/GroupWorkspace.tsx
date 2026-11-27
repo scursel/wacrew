@@ -11,7 +11,6 @@ import { PainelCliente } from "./caixa/PainelCliente";
 import { useRotas } from "./RotasPainel";
 import { Timeline } from "./Timeline";
 import { Button, IconButton, Icone } from "./ui";
-import { atalhoBloqueado } from "./useListNav";
 
 const CHAVE_PAINEL = "wac-painel-cliente";
 const ESTREITO = "(max-width: 1360px)";
@@ -21,8 +20,7 @@ type Resolucao = "parada" | "salvando" | "feita" | "erro";
 /**
  * Conversa e painel do cliente: o centro e a direita da Caixa. Aqui moram as
  * ações da conversa (atribuição, modo de envio, silenciar, resolver) e o painel,
- * que abre e fecha com "]" ou pelo botão do cabeçalho. "E" resolve a conversa
- * aberta, no dono e na equipe.
+ * que abre e fecha pelo botão do cabeçalho.
  */
 export function GroupWorkspace({
   slug,
@@ -232,21 +230,6 @@ export function GroupWorkspace({
     }
   }, [silenciado, triagem, router]);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey || atalhoBloqueado(e)) return;
-      if (e.key === "]") {
-        e.preventDefault();
-        alternarPainel();
-      } else if (e.key === "e" || e.key === "E") {
-        e.preventDefault();
-        void resolver();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [alternarPainel, resolver]);
-
   const painelVisivel = estreito ? sobreposto : aberto;
 
   const livre = atribuicao.inicial.responsavel === null && !assumidoLocal;
@@ -297,7 +280,7 @@ export function GroupWorkspace({
         onClick={resolver}
         loading={resolucao === "salvando"}
         disabled={assumindo === "salvando"}
-        title="Marcar como resolvida sem assumir (E)"
+        title="Marcar como resolvida sem assumir"
       >
         {resolucao !== "salvando" && <Icone nome="check" tamanho={14} />}
         {resolucao === "erro" ? "Tente de novo" : "Resolver"}
@@ -309,7 +292,7 @@ export function GroupWorkspace({
       variant="atencao"
       onClick={resolver}
       loading={resolucao === "salvando"}
-      title="Marcar como resolvida e soltar o responsável (E)"
+      title="Marcar como resolvida e soltar o responsável"
     >
       {resolucao !== "salvando" && <Icone nome="check" tamanho={14} />}
       {resolucao === "erro" ? "Tente de novo" : "Resolver"}
@@ -435,7 +418,7 @@ export function GroupWorkspace({
         aria-pressed={painelVisivel}
         active={painelVisivel}
         onClick={alternarPainel}
-        title="Painel do cliente (])"
+        title="Painel do cliente"
         aria-label={painelVisivel ? "Fechar o painel do cliente" : "Abrir o painel do cliente"}
         className="max-[860px]:h-10 max-[860px]:w-10"
       >

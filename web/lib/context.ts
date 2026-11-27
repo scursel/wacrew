@@ -76,12 +76,17 @@ export function horaBRT(isoUtc: string): string {
   }).format(d);
 }
 
-/** Resolve um jid para um rótulo legível: "você", o nome do contato, ou o número cru. */
+/** Resolve um jid para um rótulo legível: "você" ou o nome. Nunca devolve LID cru. */
 export function label(c: Contacts, jid: string | null | undefined): string | undefined {
   if (!jid) return undefined;
   const num = numberFromJid(jid);
   if (c.ownIds.has(num)) return "você";
-  return c.names.get(num) ?? num;
+  // LID do próprio eu via sidecar (msgs fromMe usam telefone; citação traz @lid).
+  const phone = c.phones.get(num);
+  if (phone && c.ownIds.has(phone)) return "você";
+  const name = c.names.get(num) ?? (phone ? c.names.get(phone) : undefined);
+  if (name && name !== "desconhecido" && !/^\d{6,}$/.test(name.trim())) return name;
+  return undefined;
 }
 
 /**

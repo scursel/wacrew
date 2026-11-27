@@ -101,8 +101,8 @@ function Miniatura({ m }: { m: MidiaResumo }) {
 
 /**
  * Painel do cliente, à direita da conversa: quem é, contrato, pessoas, notas,
- * copiloto e mídia, em seções que recolhem. Abre e fecha com "]" e com o botão
- * do cabeçalho; abaixo de 1360 px abre por cima da conversa. Na área da equipe
+ * copiloto e mídia, em seções que recolhem. Abre e fecha com o botão do
+ * cabeçalho; abaixo de 1360 px abre por cima da conversa. Na área da equipe
  * aparecem só as pessoas e a mídia.
  */
 export function PainelCliente({

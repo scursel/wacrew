@@ -198,7 +198,7 @@ export function mapMessage(
   }
 
   const fromMe = key.fromMe ?? false;
-  const quoted = extractQuoted(content, ctype);
+  const quoted = extractQuoted(content, ctype, sock);
   // pushName só nomeia a conversa de DM quando é do OUTRO lado (em fromMe é o meu nome).
   const conv = resolveConversation(key.remoteJid, groupName, fromMe ? null : wa.pushName);
   // Em DM, `key.participant` vem nulo ou vazio: o "outro lado" é o `remoteJid`.
@@ -559,9 +559,15 @@ function describeEvent(e: proto.Message.IEventMessage | null | undefined): strin
   return `📅 ${parts.join(' · ')}`;
 }
 
+/** user-part de um jid (sem device): 55..:12@s.. → 55.., 277..@lid → 277.. */
+function userPart(jid: string): string {
+  return (jid.split('@')[0] ?? '').split(':')[0] ?? '';
+}
+
 function extractQuoted(
   content: proto.IMessage,
   ctype: keyof proto.IMessage,
+  sock?: WASocket,
 ): { id: string | null; text: string | null; sender: string | null } {
   const node = (content as Record<string, unknown>)[ctype] as
     | {
@@ -581,5 +587,14 @@ function extractQuoted(
     quoted.imageMessage?.caption ??
     quoted.videoMessage?.caption ??
     '[mídia citada]';
-  return { id: ctx?.stanzaId || null, text, sender: ctx?.participant || null };
+  // Em addressing LID, o participant da citação vem como @lid. Se for o nosso
+  // próprio LID, grava o jid de telefone (o mesmo que msgs fromMe usam) pra
+  // UI/MCP acharem em "mine" em vez de mostrar o número cru.
+  let sender = ctx?.participant || null;
+  const meId = sock?.user?.id;
+  const meLid = sock?.user?.lid;
+  if (sender && meId && meLid && userPart(sender) === userPart(meLid)) {
+    sender = meId;
+  }
+  return { id: ctx?.stanzaId || null, text, sender };
 }

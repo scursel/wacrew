@@ -1,6 +1,14 @@
 import { Fragment } from "react";
+import {
+  type ChatContacts,
+  numberFromJid,
+  senderLabel,
+} from "@/lib/chat-contacts";
 
 /* Helpers de formatação do chat — compartilhados entre Timeline e Bubble. */
+
+export type Contacts = ChatContacts;
+export { numberFromJid, senderLabel };
 
 export function formatTime(iso: string): string {
   const d = new Date(iso);
@@ -20,21 +28,6 @@ export function mediaUrl(mediaPath: string): string {
 
 export function baseName(p: string): string {
   return p.split("/").pop() ?? p;
-}
-
-/** Número (user-part) de um jid: 250...@lid -> 250..., 55..:12@s.. -> 55.. */
-export function numberFromJid(jid: string): string {
-  return (jid.split("@")[0] ?? "").split(":")[0] ?? "";
-}
-
-export type Contacts = { names: Map<string, string>; mine: Set<string>; team: Set<string> };
-
-/** Resolve um jid para nome de exibição (você / nome / número). */
-export function senderLabel(jid: string | null | undefined, contacts: Contacts): string | null {
-  if (!jid) return null;
-  const num = numberFromJid(jid);
-  if (contacts.mine.has(num)) return "você";
-  return contacts.names.get(num) ?? num;
 }
 
 /* Cor de nome por remetente (estilo Telegram em grupo): o mesmo remetente tem

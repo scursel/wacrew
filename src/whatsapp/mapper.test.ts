@@ -45,6 +45,28 @@ describe('remetente em DM com participant vazio', () => {
     expect(m?.quotedSender).toBeNull();
   });
 
+  it('citação do próprio LID grava o jid de telefone (não o LID cru)', () => {
+    const sockComLid = {
+      user: { id: '5511888888888:2@s.whatsapp.net', lid: '277897403211794@lid' },
+    } as unknown as WASocket;
+    const m = mapMessage(
+      recebidaNaDm({
+        message: {
+          extendedTextMessage: {
+            text: 'resposta',
+            contextInfo: {
+              quotedMessage: { conversation: 'Fala Gustavo, tudo bem?' },
+              participant: '277897403211794@lid',
+            },
+          },
+        },
+      }),
+      sockComLid,
+      'Fulano',
+    );
+    expect(m?.quotedSender).toBe('5511888888888:2@s.whatsapp.net');
+  });
+
   it('em grupo o participant continua sendo o remetente', () => {
     const m = mapMessage(
       recebidaNaDm({

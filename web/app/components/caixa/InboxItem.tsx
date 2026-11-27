@@ -34,7 +34,7 @@ export function EstadoDaIa({ ia, className }: { ia: EstadoIa; className?: string
  * Uma linha da fila: avatar, nome com uma etiqueta (ou "menção"), espera ou
  * estado da IA, prévia "Fulano: texto", não lidas e, embaixo, chips discretos do
  * departamento (com "sugerido pela IA") e do responsável. A conversa aberta ganha a
- * barra de acento; a linha do cursor do teclado ganha o fundo de hover.
+ * barra de acento.
  */
 export function InboxItem({
   linha,
@@ -42,8 +42,6 @@ export function InboxItem({
   fotoUrl,
   agoraMs,
   atual = false,
-  cursor = false,
-  onCursor,
   selecionavel = false,
   selecionada = false,
   onToggleSelect,
@@ -54,9 +52,6 @@ export function InboxItem({
   agoraMs: number;
   /** Conversa aberta agora. */
   atual?: boolean;
-  /** Linha onde está o cursor do J/K. */
-  cursor?: boolean;
-  onCursor?: () => void;
   selecionavel?: boolean;
   selecionada?: boolean;
   onToggleSelect?: () => void;
@@ -66,10 +61,8 @@ export function InboxItem({
   return (
     <Link
       href={href}
-      data-nav-item
       data-slug={linha.slug}
       aria-current={atual ? "page" : undefined}
-      onMouseMove={onCursor}
       onClick={(e) => {
         if (selecionavel) {
           e.preventDefault();
@@ -82,9 +75,7 @@ export function InboxItem({
         "focus-visible:shadow-[inset_0_0_0_2px_var(--color-accent)]",
         atual
           ? "bg-selected before:absolute before:inset-y-2.5 before:left-0 before:w-0.5 before:rounded-r-sm before:bg-accent"
-          : cursor
-            ? "bg-elevated"
-            : "hover:bg-surface-2",
+          : "hover:bg-surface-2",
       )}
     >
       {selecionavel && (

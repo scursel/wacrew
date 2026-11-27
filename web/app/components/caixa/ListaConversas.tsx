@@ -2,14 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { fracaoAnel, nivelEspera } from "@/lib/aparencia";
 import { type AguardandoOk, type DadosFila, type EntregaViva, type FiltroTipoConversa, type OrdenacaoFila, type SecaoFila, type VistaFila, montarFila } from "@/lib/caixa";
 import { checarSessao, useRotas } from "../RotasPainel";
 import { useTempoReal } from "../TempoRealProvider";
 import { Button, Segmentado, Select, cn, Icone } from "../ui";
-import { Kbd } from "../ui/Kbd";
-import { useListNav } from "../useListNav";
 import { InboxItem } from "./InboxItem";
 
 export type DadosCaixa = DadosFila;
@@ -110,9 +108,9 @@ function Vazio({ titulo, children }: { titulo: string; children?: ReactNode }) {
 /**
  * A fila da Caixa: a lista de conversas que saiu da casca. Vistas Fila, Esperando,
  * Departamento (com seletor quando há mais de um), Minhas, Com a IA (só o dono) e
- * Todas; filtro por nome ou etiqueta, seções e o teclado (J/K/Enter/U). Os dados de
- * espera chegam do servidor (atualizados a cada 20 s); o que a IA está fazendo vem da
- * fila de envio a cada 10 s.
+ * Todas; filtro por nome ou etiqueta e seções. Os dados de espera chegam do
+ * servidor (atualizados a cada 20 s); o que a IA está fazendo vem da fila de
+ * envio a cada 10 s.
  */
 export function ListaConversas({ dados, aviso, className }: { dados: DadosCaixa; aviso?: ReactNode; className?: string }) {
   const rotas = useRotas();
@@ -137,7 +135,6 @@ export function ListaConversas({ dados, aviso, className }: { dados: DadosCaixa;
   useEffect(() => setAtuais(dados), [dados]);
   const [ia, setIa] = useState({ entregas: dados.entregas, aguardandoOk: dados.aguardandoOk });
   const [agora, setAgora] = useState(dados.geradoEm);
-  const listaRef = useRef<HTMLElement>(null);
   const tempoReal = useTempoReal();
 
   // Departamentos que o seletor oferece: o dono vê todos; o atendente, só os seus.
@@ -310,12 +307,6 @@ export function ListaConversas({ dados, aviso, className }: { dados: DadosCaixa;
     }
   }, [pathname]);
 
-  const itensNav = useMemo(
-    () => fila.secoes.flatMap((s) => s.linhas.map((l) => ({ slug: l.slug, naoLidas: l.naoLidas }))),
-    [fila],
-  );
-  const { navIndex, setNavIndex } = useListNav(itensNav, listaRef, atual);
-
   const abertas = dono ? fila.abertas : fila.contagens.esperando;
   let posicao = -1;
 
@@ -487,7 +478,6 @@ export function ListaConversas({ dados, aviso, className }: { dados: DadosCaixa;
       )}
 
       <nav
-        ref={listaRef}
         aria-label="Conversas da fila"
         className="min-h-0 flex-1 overflow-y-auto"
         onScroll={(e) => {
@@ -585,7 +575,6 @@ export function ListaConversas({ dados, aviso, className }: { dados: DadosCaixa;
               {s.linhas.map((l) => {
                 posicao += 1;
                 if (posicao >= limiteRender) return null;
-                const i = posicao;
                 return (
                   <InboxItem
                     key={`${s.id}-${l.slug}`}
@@ -594,8 +583,6 @@ export function ListaConversas({ dados, aviso, className }: { dados: DadosCaixa;
                     fotoUrl={l.avatarPath ? rotas.midia(l.avatarPath) : null}
                     agoraMs={agora}
                     atual={l.slug === atual}
-                    cursor={i === navIndex && l.slug !== atual}
-                    onCursor={() => setNavIndex(i)}
                     selecionavel={modoBulk}
                     selecionada={selecionadas.has(l.slug)}
                     onToggleSelect={() =>
@@ -620,24 +607,6 @@ export function ListaConversas({ dados, aviso, className }: { dados: DadosCaixa;
           </div>
         )}
       </nav>
-
-      <footer className="flex flex-wrap items-center gap-x-3.5 gap-y-1.5 border-t border-line px-5 py-2.5 text-[12px] text-fg-faint max-[860px]:hidden">
-        <span className="inline-flex items-center gap-1.5">
-          <Kbd>J</Kbd>
-          <Kbd>K</Kbd>
-          navegar
-        </span>
-        {dono && (
-          <span className="inline-flex items-center gap-1.5">
-            <Kbd>E</Kbd>
-            resolver
-          </span>
-        )}
-        <span className="inline-flex items-center gap-1.5">
-          <Kbd>]</Kbd>
-          painel do cliente
-        </span>
-      </footer>
     </section>
   );
 }

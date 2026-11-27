@@ -164,6 +164,12 @@ export function Composer({
     setError(null);
   }, [draftKey]);
 
+  // Ao abrir/trocar de conversa, o cursor já fica na caixa de texto pra digitar na hora.
+  useEffect(() => {
+    const id = requestAnimationFrame(() => taRef.current?.focus({ preventScroll: true }));
+    return () => cancelAnimationFrame(id);
+  }, [slug]);
+
   // Persiste rascunho em localStorage.
   useEffect(() => {
     try {

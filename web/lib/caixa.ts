@@ -155,7 +155,7 @@ export interface Fila {
   contagens: { esperando: number; ia: number; fila: number; minhas: number };
   /** Esperando você mais com a IA. */
   abertas: number;
-  /** Slugs das linhas visíveis, na ordem da tela (J/K andam nela). */
+  /** Slugs das linhas visíveis, na ordem da tela. */
   ordem: string[];
 }
 

@@ -1,5 +1,5 @@
 import { type Contacts, numberFromJid, roleOf } from './contacts';
-import { horaBRT } from './context';
+import { horaBRT, label } from './context';
 import type { MessageView } from './data';
 
 /** Rótulo curto pra mensagem sem texto (mídia, enquete, etc.). */
@@ -77,6 +77,7 @@ export function selectNew(
       ignoradasNaoCliente++;
       continue;
     }
+    const citacaoDe = label(contacts, m.quotedSender);
     mensagens.push({
       quem: m.senderName || m.sender,
       quando: m.timestamp,
@@ -84,9 +85,7 @@ export function selectNew(
       texto: bodyOf(m),
       type: m.type,
       ...(m.quotedText ? { citacao: m.quotedText } : {}),
-      ...(m.quotedSender
-        ? { citacao_de: contacts.names.get(numberFromJid(m.quotedSender)) || m.quotedSender }
-        : {}),
+      ...(citacaoDe ? { citacao_de: citacaoDe } : {}),
     });
   }
 

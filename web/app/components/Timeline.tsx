@@ -20,9 +20,10 @@ import type { NotaInterna } from "@/lib/notas-internas";
 import type { ResultadoBuscaMensagem } from "@/lib/busca-mensagens";
 import type { UltimoAtendimento } from "@/lib/ultimo-atendimento";
 import { casaBusca } from "@/lib/busca";
+import { contactsFromMessages } from "@/lib/chat-contacts";
 import { Bubble } from "./chat/Bubble";
 import { Composer, type MembroEquipeInterna, type ParticipanteGrupo, type ReplyTarget } from "./chat/Composer";
-import { type Contacts, numberFromJid } from "./chat/format";
+import { numberFromJid } from "./chat/format";
 import { liberarSugestao, SuggestionCard } from "./chat/SuggestionCard";
 import { PresenceLine } from "./PresenceLine";
 import { checarSessao, useRotas } from "./RotasPainel";
@@ -428,16 +429,12 @@ export function Timeline({
   }, [slug, router, rotas]);
 
   // Mapa de id → nome (de quem já mandou mensagem) e os ids que são "você".
-  const contacts = useMemo<Contacts>(() => {
-    const names = new Map<string, string>();
-    const mine = new Set<string>();
-    for (const m of messages) {
-      const num = numberFromJid(m.sender);
-      if (num && !names.has(num)) names.set(num, m.senderName);
-      if (num && m.fromMe) mine.add(num);
-    }
-    return { names, mine, team: teamIds };
-  }, [messages, teamIds]);
+  // Também amarra o LID do quotedSender ao autor da msg citada — sem isso a
+  // barra de citação mostra o número do LID em vez de "você"/nome do contato.
+  const contacts = useMemo(
+    () => contactsFromMessages(messages, teamIds),
+    [messages, teamIds],
+  );
 
   // Entregas da IA nesta conversa (só no painel do dono): numeram os balões e avisam o que não saiu.
   const [eventos, setEventos] = useState<EventoEntrega[]>([]);
