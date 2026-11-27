@@ -10,6 +10,10 @@ export interface Atribuicao {
   responsavel: string | null;
   desde: string | null;
   iaTentouEm?: string;
+  /** ISO da última mensagem que a IA leu na última tentativa. */
+  iaViuAte?: string;
+  /** ISO do último "resolver": atendimento encerrado, a sugestão da IA vale só até aqui. */
+  resolvidoEm?: string;
 }
 export type Atribuicoes = Record<string, Atribuicao>;
 export type EventoAtribuicao =
@@ -18,7 +22,7 @@ export type EventoAtribuicao =
   | { tipo: 'delegar'; por: string; para: string | null; departamento?: string | null; nota?: string }
   | { tipo: 'soltar'; por: string }
   | { tipo: 'departamento'; por: string; departamento: string | null }
-  | { tipo: 'sugestao'; departamento: string | null }
+  | { tipo: 'sugestao'; departamento: string | null; viuAte?: string }
   | { tipo: 'resolver'; por: string };
 
 export interface RegistroEventoAtribuicao {
@@ -39,13 +43,19 @@ export function aplicar(estado: Atribuicoes, slug: string, ev: EventoAtribuicao,
       atual.responsavel = ev.por; atual.desde = agoraIso; break;
     case 'delegar':
       atual.responsavel = ev.para; atual.desde = ev.para ? agoraIso : null;
-      if (ev.departamento !== undefined) { atual.departamento = ev.departamento; atual.origemDepartamento = ev.departamento === null ? null : 'manual'; }
+      if (ev.departamento !== undefined) { atual.departamento = ev.departamento; atual.origemDepartamento = 'manual'; }
       break;
-    case 'soltar': case 'resolver': atual.responsavel = null; atual.desde = null; break;
-    case 'departamento': atual.departamento = ev.departamento; atual.origemDepartamento = ev.departamento === null ? null : 'manual'; break;
+    case 'soltar': atual.responsavel = null; atual.desde = null; break;
+    case 'resolver': atual.responsavel = null; atual.desde = null; atual.resolvidoEm = agoraIso; break;
+    // Tirar o departamento na mão também é escolha manual: a IA não volta a preencher.
+    case 'departamento': atual.departamento = ev.departamento; atual.origemDepartamento = 'manual'; break;
     case 'sugestao':
       atual.iaTentouEm = agoraIso;
-      if (!atual.departamento && ev.departamento) { atual.departamento = ev.departamento; atual.origemDepartamento = 'ia'; }
+      atual.iaViuAte = ev.viuAte ?? agoraIso;
+      // A IA troca a própria sugestão (atendimento novo, assunto novo), nunca a escolha manual.
+      if (atual.origemDepartamento !== 'manual' && (ev.departamento || atual.origemDepartamento === 'ia')) {
+        atual.departamento = ev.departamento; atual.origemDepartamento = ev.departamento ? 'ia' : null;
+      }
       break;
   }
   return { ...estado, [slug]: atual };

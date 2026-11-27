@@ -12,7 +12,7 @@ const { buildInbox, classificarPendentes, irmaos } = vi.hoisted(() => ({
   irmaos: new Map<string, string>(),
   buildInbox: vi.fn(async (_opts?: unknown): Promise<unknown[]> => []),
   // Nunca resolve: se a fila esperasse a IA, o teste travaria.
-  classificarPendentes: vi.fn((_slugs: string[]): Promise<void> => new Promise(() => {})),
+  classificarPendentes: vi.fn((_pendentes: unknown[]): Promise<void> => new Promise(() => {})),
 }));
 vi.mock('./inbox', () => ({ buildInbox }));
 vi.mock('@/lib/equipe/classificar-departamento', () => ({ classificarPendentes }));
@@ -221,14 +221,14 @@ describe('classificação da IA e espera de DM partida', () => {
   it('filaDaEquipe passa os slugs da espera à classificação e não espera por ela', async () => {
     buildInbox.mockResolvedValueOnce([esperaFake('grupo-a', 'Grupo A')]);
     const f = await mod.filaDaEquipe(new Set(['grupo-a']), (s) => s, [grupo('grupo-a')], 'ana');
-    expect(classificarPendentes).toHaveBeenCalledWith(['grupo-a']);
+    expect(classificarPendentes).toHaveBeenCalledWith([{ slug: 'grupo-a', desde: expect.any(String) }]);
     expect(f.esperando.map((e) => e.slug)).toEqual(['grupo-a']);
   });
 
   it('filaDoDono também dispara a classificação com os slugs da espera, sem esperar', async () => {
     buildInbox.mockResolvedValueOnce([esperaFake('grupo-b', 'Grupo B')]);
     const f = await mod.filaDoDono();
-    expect(classificarPendentes).toHaveBeenCalledWith(['grupo-b']);
+    expect(classificarPendentes).toHaveBeenCalledWith([{ slug: 'grupo-b', desde: expect.any(String) }]);
     expect(f.esperando.map((e) => e.slug)).toEqual(['grupo-b']);
   });
 
@@ -268,6 +268,6 @@ describe('classificação da IA e espera de DM partida', () => {
 
     const linha = montarFila(f, { vista: 'esperando' }).secoes[0]?.linhas.find((l) => l.slug === 'dm-lid');
     expect(linha).toMatchObject({ responsavel: 'ana', departamentoNome: 'Suporte' });
-    expect(classificarPendentes).toHaveBeenLastCalledWith(['dm-tel']);
+    expect(classificarPendentes).toHaveBeenLastCalledWith([{ slug: 'dm-tel', desde: expect.any(String) }]);
   });
 });

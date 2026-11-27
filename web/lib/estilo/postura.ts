@@ -30,6 +30,8 @@ export interface LinhaHistorico {
   nome: string;
   hora: string;
   texto: string;
+  /** ISO da mensagem: separa o assunto atual do antigo por intervalo de tempo. */
+  ts?: string;
 }
 
 export interface ResultadoPostura {
@@ -73,7 +75,7 @@ export function historicoDaConversa(msgs: MessageView[], contatos: Contacts, n =
     .slice(-n)
     .map((m) => {
       const papel = m.fromMe ? "eu" : roleOf(contatos, numberFromJid(m.sender)) === "client" ? "cliente" : "equipe";
-      return { quem: papel, nome: m.fromMe ? "eu" : m.senderName || "?", hora: hora(m.timestamp), texto: conteudo(m) } as LinhaHistorico;
+      return { quem: papel, nome: m.fromMe ? "eu" : m.senderName || "?", hora: hora(m.timestamp), texto: conteudo(m), ts: m.timestamp } as LinhaHistorico;
     })
     .filter((l) => l.texto);
 }

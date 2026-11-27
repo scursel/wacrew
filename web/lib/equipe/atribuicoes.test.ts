@@ -32,6 +32,26 @@ describe('atribuições', () => {
     expect(a.aplicar(manual, 'x', { tipo: 'sugestao', departamento: 'suporte' }, 'agora').x).toMatchObject({ departamento: 'financeiro', origemDepartamento: 'manual', iaTentouEm: 'agora' });
     expect(a.aplicar({}, 'x', { tipo: 'sugestao', departamento: null }, 'agora').x).toMatchObject({ departamento: null, origemDepartamento: null, iaTentouEm: 'agora' });
   });
+  it('a IA troca a própria sugestão num atendimento novo, mas não a escolha manual', () => {
+    const daIA = a.aplicar({}, 'x', { tipo: 'sugestao', departamento: 'financeiro' }, 'ontem');
+    expect(a.aplicar(daIA, 'x', { tipo: 'sugestao', departamento: 'vendas' }, 'hoje').x).toMatchObject({ departamento: 'vendas', origemDepartamento: 'ia', iaTentouEm: 'hoje' });
+    // Assunto novo sem departamento claro: a sugestão antiga, vencida, sai.
+    expect(a.aplicar(daIA, 'x', { tipo: 'sugestao', departamento: null }, 'hoje').x).toMatchObject({ departamento: null, origemDepartamento: null });
+    const manual = a.aplicar(daIA, 'x', { tipo: 'departamento', por: 'ana', departamento: 'suporte' }, 'hoje');
+    expect(a.aplicar(manual, 'x', { tipo: 'sugestao', departamento: null }, 'depois').x).toMatchObject({ departamento: 'suporte', origemDepartamento: 'manual' });
+  });
+  it('tirar o departamento na mão é escolha manual: a sugestão da IA não preenche de novo', () => {
+    const daIA = a.aplicar({}, 'x', { tipo: 'sugestao', departamento: 'financeiro' }, 'ontem');
+    const tirou = a.aplicar(daIA, 'x', { tipo: 'departamento', por: 'ana', departamento: null }, 'hoje');
+    expect(tirou.x).toMatchObject({ departamento: null, origemDepartamento: 'manual' });
+    expect(a.aplicar(tirou, 'x', { tipo: 'sugestao', departamento: 'vendas' }, 'depois').x).toMatchObject({ departamento: null, origemDepartamento: 'manual' });
+  });
+  it('sugestão guarda até onde a IA leu e resolver marca a hora', () => {
+    const daIA = a.aplicar({}, 'x', { tipo: 'sugestao', departamento: 'financeiro', viuAte: 'msg' }, 'agora');
+    expect(daIA.x).toMatchObject({ iaTentouEm: 'agora', iaViuAte: 'msg' });
+    expect(a.aplicar(daIA, 'x', { tipo: 'resolver', por: 'ana' }, 'depois').x).toMatchObject({ resolvidoEm: 'depois', departamento: 'financeiro' });
+    expect(a.aplicar(daIA, 'x', { tipo: 'soltar', por: 'ana' }, 'depois').x.resolvidoEm).toBeUndefined();
+  });
   it('serializa registros e limpa responsáveis e departamentos', async () => {
     await Promise.all([a.registrar('x', { tipo: 'delegar', por: 'ana', para: 'ana', departamento: 'fin' }), a.registrar('y', { tipo: 'delegar', por: 'bia', para: 'bia', departamento: 'fin' })]);
     expect((await readFile(join(tmp, '.equipe', 'atribuicoes.jsonl'), 'utf8')).trim().split('\n')).toHaveLength(2);

@@ -204,7 +204,7 @@ export async function filaDoDono(): Promise<DadosFila> {
     readTriage(),
   ]);
   const agora = Date.now();
-  const slugsEmEspera = [...new Set(inbox.map((i) => canonicoDe(i.slug)))];
+  const slugsEmEspera = inbox.map((i) => ({ slug: canonicoDe(i.slug), desde: i.waitingSince }));
   const dados: DadosFila = {
     esperando: inbox.map(paraEspera),
     // A lista do dono não agrupa DM partida, mas a atribuição mora no slug canônico (onde as rotas gravam):
@@ -245,7 +245,7 @@ export async function filaDaEquipe(
     readTriage(),
   ]);
   const agora = Date.now();
-  const slugsEmEspera = inbox.map((i) => i.slug);
+  const slugsEmEspera = inbox.map((i) => ({ slug: i.slug, desde: i.waitingSince }));
   const dados: DadosFila = {
     esperando: inbox.map(paraEspera),
     // Atribuição no slug canônico (o mesmo da espera): DM partida (telefone × LID) é uma conversa só.
