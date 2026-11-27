@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { pedirJson, useCarregar } from "@/app/components/pedirJson";
-import { Badge, Card, Field, Icone, Input, Select } from "@/app/components/ui";
+import { Badge, Card, Field, Icone, Select } from "@/app/components/ui";
 import type { PanelSettings } from "@/lib/config";
+import { EVENTO_MODELOS_ATUALIZADO } from "./ModelosCard";
 import { Carregando, FalhaAoCarregar, RodapeSalvar, useSalvar } from "./partes";
 import { ANCORA_CARD, type AoResumir } from "./secoes";
 
@@ -22,6 +23,13 @@ const MODELOS = [
   { value: "mlx-community/whisper-large-v3-turbo", label: "large-v3-turbo (mais rápido)" },
 ];
 
+const IDIOMAS = [
+  { value: "pt", label: "Português" },
+  { value: "en", label: "Inglês" },
+  { value: "es", label: "Espanhol" },
+  { value: "auto", label: "Detectar automático" },
+];
+
 /** Transcrição de áudio: mostra o motor real (9router ou MLX local) e configura o idioma. */
 export function TranscricaoCard({ aoResumir }: { aoResumir: AoResumir }) {
   const { dados, erro, recarregar } = useCarregar<RespostaSettings>("/api/settings");
@@ -37,6 +45,15 @@ export function TranscricaoCard({ aoResumir }: { aoResumir: AoResumir }) {
     setCampos({ model: dados.model, language: dados.language });
     setInfo(dados.transcricao ?? null);
   }, [dados]);
+
+  // Quando Modelos de IA salva/remove chave ou função, recarrega o motor de fala na hora.
+  useEffect(() => {
+    const aoAtualizar = () => {
+      void recarregar();
+    };
+    window.addEventListener(EVENTO_MODELOS_ATUALIZADO, aoAtualizar);
+    return () => window.removeEventListener(EVENTO_MODELOS_ATUALIZADO, aoAtualizar);
+  }, [recarregar]);
 
   const via9router = info?.modo === "9router";
   const ativo9router = Boolean(via9router && info?.temChave9router && info?.modelo9router);
@@ -70,9 +87,38 @@ export function TranscricaoCard({ aoResumir }: { aoResumir: AoResumir }) {
 
   // Modelo definido por variável de ambiente e fora da lista continua escolhível (só usado no Mac/MLX).
   const modelos = campos && !MODELOS.some((m) => m.value === campos.model) ? [...MODELOS, { value: campos.model, label: campos.model }] : MODELOS;
+  const idiomas =
+    campos && !IDIOMAS.some((i) => i.value === campos.language)
+      ? [...IDIOMAS, { value: campos.language, label: `${campos.language} (customizado)` }]
+      : IDIOMAS;
   const alterado = Boolean(
     campos && salvos && (campos.language !== salvos.language || (!via9router && campos.model !== salvos.model)),
   );
+
+  const campoIdioma = campos ? (
+    <Field
+      label="Idioma"
+      htmlFor="transcricao-idioma"
+      error={idiomaVazio ? "Informe o idioma." : undefined}
+      hint="Enviado ao motor de transcrição."
+    >
+      <Select
+        id="transcricao-idioma"
+        value={campos.language}
+        onChange={(e) => {
+          setCampos({ ...campos, language: e.target.value });
+          setIdiomaVazio(false);
+        }}
+        aria-invalid={idiomaVazio || undefined}
+      >
+        {idiomas.map((i) => (
+          <option key={i.value} value={i.value}>
+            {i.label}
+          </option>
+        ))}
+      </Select>
+    </Field>
+  ) : null;
 
   return (
     <Card
@@ -131,26 +177,10 @@ export function TranscricaoCard({ aoResumir }: { aoResumir: AoResumir }) {
               </p>
             )}
           </div>
-          <Field
-            label="Idioma"
-            htmlFor="transcricao-idioma"
-            error={idiomaVazio ? "Informe o idioma." : undefined}
-            hint="Enviado ao 9router (ex.: pt, en ou auto)."
-          >
-            <Input
-              id="transcricao-idioma"
-              value={campos.language}
-              onChange={(e) => {
-                setCampos({ ...campos, language: e.target.value });
-                setIdiomaVazio(false);
-              }}
-              aria-invalid={idiomaVazio || undefined}
-              className="font-mono"
-            />
-          </Field>
+          {campoIdioma}
         </div>
       ) : (
-        <div className="grid grid-cols-[minmax(0,1fr)_160px] gap-4 max-[860px]:grid-cols-1">
+        <div className="grid grid-cols-[minmax(0,1fr)_180px] gap-4 max-[860px]:grid-cols-1">
           <Field
             label="Modelo (MLX, local neste Mac)"
             htmlFor="transcricao-modelo"
@@ -164,18 +194,7 @@ export function TranscricaoCard({ aoResumir }: { aoResumir: AoResumir }) {
               ))}
             </Select>
           </Field>
-          <Field label="Idioma" htmlFor="transcricao-idioma" error={idiomaVazio ? "Informe o idioma." : undefined} hint="Código, como pt ou en.">
-            <Input
-              id="transcricao-idioma"
-              value={campos.language}
-              onChange={(e) => {
-                setCampos({ ...campos, language: e.target.value });
-                setIdiomaVazio(false);
-              }}
-              aria-invalid={idiomaVazio || undefined}
-              className="font-mono"
-            />
-          </Field>
+          {campoIdioma}
         </div>
       )}
     </Card>

@@ -1,14 +1,21 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { mensagemDe, pedirJson, useCarregar } from "@/app/components/pedirJson";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { mensagemDe, pedirJson } from "@/app/components/pedirJson";
 import { Aviso, Badge, BotaoConfirmar, Button, Card, Field, Icone, Input, Select, Spinner } from "@/app/components/ui";
 import { Carregando, FalhaAoCarregar } from "./partes";
 import { ANCORA_CARD, type AoResumir } from "./secoes";
 
 export type FuncaoIA = "copiloto" | "rascunho" | "postura" | "departamento" | "video" | "transcricao" | "orcamento";
 
-const URL_9ROUTER_PADRAO = "http://100.115.118.6:20128/v1";
+const URL_9ROUTER_PADRAO = "http://localhost:20128/v1";
+export const EVENTO_MODELOS_ATUALIZADO = "wac:modelos:atualizado";
+
+function avisarModelosAtualizados() {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(EVENTO_MODELOS_ATUALIZADO));
+  }
+}
 
 interface ConfigModelosPublica {
   baseUrl: string;
@@ -77,7 +84,7 @@ function validarUrl(raw: string): { ok: true; url: string } | { ok: false; erro:
     }
     return { ok: true, url };
   } catch {
-    return { ok: false, erro: "Informe uma URL válida (ex.: http://100.115.118.6:20128/v1)." };
+    return { ok: false, erro: "Informe uma URL válida (ex.: http://localhost:20128/v1)." };
   }
 }
 
@@ -124,7 +131,35 @@ async function chamarTestar(corpo: PedidoTestar): Promise<RespostaTestar> {
 
 /** Configuração do 9router e escolha do combo (ou modelo de fala) por função de IA do painel. */
 export function ModelosCard({ aoResumir }: { aoResumir: AoResumir }) {
-  const { dados, erro, recarregar, definir } = useCarregar<RespostaModelos>("/api/config/modelos");
+  const [dados, definir] = useState<RespostaModelos | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+
+  const recarregar = useCallback(async () => {
+    setErro(null);
+    try {
+      // Etapa 1: só config (rápido) — o card aparece mesmo se a lista de modelos demorar.
+      const soConfig = await pedirJson<ConfigModelosPublica & Partial<RespostaModelos>>("/api/config/modelos?soConfig=1");
+      definir((atual) => ({
+        ...soConfig,
+        combos: soConfig.combos ?? atual?.combos ?? [],
+        fala: soConfig.fala ?? atual?.fala ?? [],
+        erroLista: soConfig.erroLista ?? atual?.erroLista,
+      }));
+      // Etapa 2: lista completa em background (compatível se o backend já devolver tudo de uma vez).
+      try {
+        const completa = await pedirJson<RespostaModelos>("/api/config/modelos");
+        definir(completa);
+      } catch (e) {
+        definir((atual) => (atual ? { ...atual, erroLista: mensagemDe(e) } : null));
+      }
+    } catch (e) {
+      setErro(mensagemDe(e));
+    }
+  }, []);
+
+  useEffect(() => {
+    void recarregar();
+  }, [recarregar]);
 
   const [urlInput, setUrlInput] = useState(URL_9ROUTER_PADRAO);
   const [urlInicializada, setUrlInicializada] = useState(false);
@@ -297,6 +332,7 @@ export function ModelosCard({ aoResumir }: { aoResumir: AoResumir }) {
           : null,
       );
       mostrarFeedbackConexao({ tom: "ok", texto: "Conexão salva" }, true);
+      avisarModelosAtualizados();
       void atualizarListaAposConexao();
     } catch (e) {
       mostrarFeedbackConexao({ tom: "erro", texto: mensagemDe(e) });
@@ -329,6 +365,7 @@ export function ModelosCard({ aoResumir }: { aoResumir: AoResumir }) {
           : null,
       );
       mostrarFeedbackConexao({ tom: "ok", texto: "Chave removida" }, true);
+      avisarModelosAtualizados();
       void atualizarListaAposConexao();
     } catch (e) {
       mostrarFeedbackConexao({ tom: "erro", texto: mensagemDe(e) });
@@ -365,6 +402,7 @@ export function ModelosCard({ aoResumir }: { aoResumir: AoResumir }) {
           : null,
       );
       mostrarFeedbackLinha(funcao, { tom: "ok", texto: "Salvo" }, true);
+      avisarModelosAtualizados();
     } catch (e) {
       definir((atual) => (atual ? { ...atual, funcoes: comFuncao(atual.funcoes, funcao, valorAnterior) } : null));
       mostrarFeedbackLinha(funcao, { tom: "erro", texto: mensagemDe(e) });

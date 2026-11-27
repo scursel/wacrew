@@ -183,7 +183,7 @@ export function Notificacoes({ groups }: { groups: GroupMeta[] }) {
         });
         n.onclick = () => {
           window.focus();
-          router.push(rotas.chat(item.slug));
+          if (item.slug) router.push(rotas.chat(item.slug));
           n.close();
         };
       } catch {
@@ -523,6 +523,13 @@ export function Notificacoes({ groups }: { groups: GroupMeta[] }) {
               )}
             </div>
             <div className="flex items-center gap-1.5">
+              <a
+                href="/config#notificacoes"
+                onClick={() => setAberto(false)}
+                className="rounded-[6px] px-2 py-1 text-[11.5px] font-medium text-fg-faint transition-colors hover:bg-elevated hover:text-fg"
+              >
+                Configurar
+              </a>
               <button
                 type="button"
                 onClick={marcarTodasComoLidas}

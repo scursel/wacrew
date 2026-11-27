@@ -1,7 +1,7 @@
 "use client";
 
 import QRCode from "qrcode";
-import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { mensagemDe, pedirJson } from "@/app/components/pedirJson";
 import { haQuanto } from "@/app/components/tempo";
 import { Aviso, Badge, BotaoConfirmar, Button, Card, Icone, Input, Segmentado } from "@/app/components/ui";
@@ -47,35 +47,121 @@ function explicacao(conn: Conn, status: CollectorStatus | null): ReactNode {
   }
 }
 
-/** Conexão do coletor com o WhatsApp: estado ao vivo (a cada 2,5 s), reconexão manual, troca de aparelho e QR. */
+/** Conexão do coletor com o WhatsApp: polling adaptativo, reconexão manual, troca de aparelho e QR. */
 export function ConexaoCard({ aoResumir }: { aoResumir: AoResumir }) {
   const [status, setStatus] = useState<CollectorStatus | null>(null);
   const [reconectando, setReconectando] = useState(false);
   const [aviso, setAviso] = useState<{ tom: "ok" | "erro"; texto: string } | null>(null);
+  const statusRef = useRef(status);
+  statusRef.current = status;
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  const limparTimers = useCallback(() => {
+    for (const id of timersRef.current) clearTimeout(id);
+    timersRef.current = [];
+  }, []);
+
+  const marcarTimer = useCallback((id: ReturnType<typeof setTimeout>) => {
+    timersRef.current.push(id);
+  }, []);
 
   const lerStatus = useCallback(async () => {
     try {
       const res = await fetch("/api/status", { cache: "no-store" });
+      if (!res.ok) {
+        setStatus((atual) =>
+          atual ??
+          ({
+            connection: "offline",
+            qr: null,
+            pairingCode: null,
+            watchedCount: 0,
+            updatedAt: null,
+          } as CollectorStatus),
+        );
+        return;
+      }
       const dados = (await res.json()) as CollectorStatus;
       setStatus(dados);
+      statusRef.current = dados;
     } catch {
-      /* coletor pode estar fora do ar: segue mostrando o último estado */
+      setStatus((atual) =>
+        atual ??
+        ({
+          connection: "offline",
+          qr: null,
+          pairingCode: null,
+          watchedCount: 0,
+          updatedAt: null,
+        } as CollectorStatus),
+      );
     }
   }, []);
 
   useEffect(() => {
-    void lerStatus();
-    const id = setInterval(() => void lerStatus(), 2500);
-    return () => clearInterval(id);
-  }, [lerStatus]);
+    let alive = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
 
-  const conn = status?.connection ?? "offline";
-  const estado = ESTADOS[conn];
+    const intervaloPara = (conn: Conn | undefined) => {
+      if (conn === "open") return 15_000;
+      if (conn === "qr" || conn === "connecting" || conn === "close" || conn === "logged_out") return 2_500;
+      return 2_500;
+    };
+
+    const agendar = () => {
+      clearTimeout(timer);
+      if (!alive) return;
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      const ms = intervaloPara(statusRef.current?.connection);
+      timer = setTimeout(() => {
+        void lerStatus().then(() => {
+          if (alive) agendar();
+        });
+      }, ms);
+    };
+
+    const aoVisibilidade = () => {
+      if (document.visibilityState === "visible") {
+        void lerStatus().then(() => {
+          if (alive) agendar();
+        });
+      } else {
+        clearTimeout(timer);
+      }
+    };
+
+    void lerStatus().then(() => {
+      if (alive) agendar();
+    });
+    document.addEventListener("visibilitychange", aoVisibilidade);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", aoVisibilidade);
+      limparTimers();
+    };
+  }, [lerStatus, limparTimers]);
+
+  const carregando = status === null;
+  const conn: Conn | "carregando" = carregando ? "carregando" : (status.connection ?? "offline");
+  const estado =
+    conn === "carregando"
+      ? { selo: "Carregando…", curto: "…", badge: "neutral" as const, tom: undefined as Resumo["tom"] }
+      : ESTADOS[conn];
   const precisaReconectar = conn === "close" || conn === "logged_out" || conn === "unknown" || conn === "connecting";
 
   useEffect(() => {
+    if (carregando) {
+      aoResumir("conexao", { texto: "…" });
+      return;
+    }
     aoResumir("conexao", { texto: estado.curto, tom: estado.tom });
-  }, [aoResumir, estado]);
+  }, [aoResumir, carregando, estado]);
+
+  // Limpa aviso de sucesso quando a conexão estabiliza em open/qr.
+  useEffect(() => {
+    if (conn === "open" || conn === "qr") setAviso(null);
+  }, [conn]);
 
   async function acionarConexao(acao: "reconectar" | "novo_qr") {
     setReconectando(true);
@@ -89,7 +175,7 @@ export function ConexaoCard({ aoResumir }: { aoResumir: AoResumir }) {
             ? "Reconexão iniciada. Aguarde alguns segundos para o status atualizar."
             : "Sessão encerrada. Um novo QR code vai aparecer abaixo em instantes.",
       });
-      setTimeout(() => void lerStatus(), 1200);
+      marcarTimer(setTimeout(() => void lerStatus(), 1200));
     } catch (e) {
       setAviso({ tom: "erro", texto: mensagemDe(e) });
     } finally {
@@ -105,16 +191,20 @@ export function ConexaoCard({ aoResumir }: { aoResumir: AoResumir }) {
       titulo="Conexão com o WhatsApp"
       icone={<Icone nome="phone" />}
       acoes={
-        <Badge variant={estado.badge} dot>
+        <Badge variant={estado.badge} dot={conn !== "carregando"}>
           {estado.selo}
         </Badge>
       }
       rodape={
         <div className="flex w-full flex-wrap items-center justify-between gap-3">
           <span className="text-[12.5px] text-fg-faint">
-            {status?.updatedAt ? `Atualizado ${haQuanto(status.updatedAt)}` : "Verificando estado do coletor…"}
+            {carregando
+              ? "Verificando estado do coletor…"
+              : status?.updatedAt
+                ? `Atualizado ${haQuanto(status.updatedAt)}`
+                : "Verificando estado do coletor…"}
           </span>
-          {conn !== "offline" && (
+          {!carregando && conn !== "offline" && (
             <div className="flex flex-wrap items-center gap-2">
               <Button
                 type="button"
@@ -147,11 +237,15 @@ export function ConexaoCard({ aoResumir }: { aoResumir: AoResumir }) {
           </Aviso>
         )}
 
-        {conn === "qr" && (status?.qr || status?.pairingCode) ? (
-          <Pareamento qr={status.qr ?? ""} pairingCode={status.pairingCode ?? null} />
+        {carregando ? (
+          <p className="text-[13.5px] leading-relaxed text-fg-dim">Carregando estado da conexão…</p>
+        ) : conn === "qr" && (status?.qr || status?.pairingCode) ? (
+          <Pareamento qr={status!.qr ?? ""} pairingCode={status!.pairingCode ?? null} />
+        ) : conn === "qr" ? (
+          <p className="text-[13.5px] leading-relaxed text-fg-dim">Preparando QR code…</p>
         ) : (
           <div className="space-y-2">
-            <p className="text-[13.5px] leading-relaxed text-fg-dim">{explicacao(conn, status)}</p>
+            <p className="text-[13.5px] leading-relaxed text-fg-dim">{explicacao(conn as Conn, status)}</p>
             {conn === "open" && (
               <p className="text-[12.5px] leading-relaxed text-fg-faint">
                 Se o WhatsApp Web cair ou parar de receber mensagens, use <strong className="font-medium text-fg-dim">Reconectar agora</strong> abaixo. Para reconectar com outro celular ou re-parear do zero, clique em{" "}

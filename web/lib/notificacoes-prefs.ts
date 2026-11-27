@@ -70,6 +70,37 @@ export function contextoSeguroParaPush(): boolean {
 }
 
 let audioCtx: AudioContext | null = null;
+let desbloqueioArmado = false;
+
+function obterAudioContext(): AudioContext | null {
+  if (typeof window === "undefined") return null;
+  const Ctor =
+    window.AudioContext ||
+    (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!Ctor) return null;
+  if (!audioCtx || audioCtx.state === "closed") {
+    audioCtx = new Ctor();
+  }
+  return audioCtx;
+}
+
+/** Desbloqueia o AudioContext na 1ª interação do usuário (política autoplay dos navegadores). */
+function armarDesbloqueioAudio(): void {
+  if (typeof window === "undefined" || desbloqueioArmado) return;
+  desbloqueioArmado = true;
+  const desbloquear = () => {
+    const ctx = obterAudioContext();
+    if (ctx?.state === "suspended") void ctx.resume().catch(() => {});
+    window.removeEventListener("pointerdown", desbloquear);
+    window.removeEventListener("keydown", desbloquear);
+  };
+  window.addEventListener("pointerdown", desbloquear, { once: true });
+  window.addEventListener("keydown", desbloquear, { once: true });
+}
+
+if (typeof window !== "undefined") {
+  armarDesbloqueioAudio();
+}
 
 /**
  * Toca um aviso sonoro discreto de 2 notas (Web Audio API).
@@ -78,16 +109,13 @@ let audioCtx: AudioContext | null = null;
 export function tocarSomNotificacao(): boolean {
   if (typeof window === "undefined") return false;
   try {
-    const Ctor =
-      window.AudioContext ||
-      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!Ctor) return false;
-    if (!audioCtx || audioCtx.state === "closed") {
-      audioCtx = new Ctor();
+    armarDesbloqueioAudio();
+    const ctx = obterAudioContext();
+    if (!ctx) return false;
+    if (ctx.state === "suspended") {
+      void ctx.resume().catch(() => {});
     }
-    if (audioCtx.state === "suspended") {
-      void audioCtx.resume().catch(() => {});
-    }
+    audioCtx = ctx;
     const now = audioCtx.currentTime;
     const notas = [
       { freq: 659.25, inicio: 0, duracao: 0.14 }, // E5

@@ -50,15 +50,15 @@ export function Card({ className = "", children, id, titulo, icone, meta, acoes,
     <section id={id} aria-labelledby={idTitulo} className={cn(base, "flex flex-col", className)}>
       <header className="flex min-h-[52px] shrink-0 items-center gap-2 px-5">
         {icone && <span className="shrink-0 text-fg-faint [&>svg]:h-4 [&>svg]:w-4">{icone}</span>}
-        <h3 id={idTitulo} className="text-[14.5px] font-semibold tracking-[-0.006em] text-fg">
+        <h2 id={idTitulo} className="text-[14.5px] font-semibold tracking-[-0.006em] text-fg">
           {titulo}
-        </h3>
+        </h2>
         {meta && <span className="truncate text-[12.5px] text-fg-faint">{meta}</span>}
         {acoes && <div className="ml-auto flex items-center gap-2">{acoes}</div>}
       </header>
       <div className={cn("min-h-0 flex-1 px-5 pb-5", ALTURA[altura])}>{children}</div>
       {rodape && (
-        <footer className="flex min-h-11 items-center gap-2 border-t border-line px-5 text-[12.5px] text-fg-faint">
+        <footer className="flex min-h-11 items-center gap-2 border-t border-line px-5 py-2.5 text-[12.5px] text-fg-faint">
           {rodape}
         </footer>
       )}

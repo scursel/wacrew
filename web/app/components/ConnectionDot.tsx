@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { checarSessao, useRotas } from "./RotasPainel";
 
 type Status = { connection?: string; qr?: string | null };
@@ -12,15 +12,19 @@ export interface EstadoColetor {
   pairing: boolean;
 }
 
-/** Polling leve (5 s) do status do coletor pela rota da área atual. */
+/** Polling leve do status do coletor: 15 s quando open, 5 s nos demais; pausa com a aba oculta. */
 export function useStatusColetor(): EstadoColetor {
   const rotas = useRotas();
   const [status, setStatus] = useState<Status | null>(null);
   const [reachable, setReachable] = useState(true);
   const [carregado, setCarregado] = useState(false);
+  const statusRef = useRef<Status | null>(null);
+  statusRef.current = status;
 
   useEffect(() => {
     let alive = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
     const tick = async () => {
       try {
         const res = checarSessao(await fetch(rotas.status, { cache: "no-store" }), rotas);
@@ -28,6 +32,7 @@ export function useStatusColetor(): EstadoColetor {
         if (alive) {
           setStatus(data);
           setReachable(true);
+          statusRef.current = data;
         }
       } catch {
         if (alive) setReachable(false);
@@ -35,11 +40,38 @@ export function useStatusColetor(): EstadoColetor {
         if (alive) setCarregado(true);
       }
     };
-    tick();
-    const id = setInterval(tick, 5000);
+
+    const agendar = () => {
+      clearTimeout(timer);
+      if (!alive) return;
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      const open = statusRef.current?.connection === "open";
+      const ms = open ? 15_000 : 5_000;
+      timer = setTimeout(() => {
+        void tick().then(() => {
+          if (alive) agendar();
+        });
+      }, ms);
+    };
+
+    const aoVisibilidade = () => {
+      if (document.visibilityState === "visible") {
+        void tick().then(() => {
+          if (alive) agendar();
+        });
+      } else {
+        clearTimeout(timer);
+      }
+    };
+
+    void tick().then(() => {
+      if (alive) agendar();
+    });
+    document.addEventListener("visibilitychange", aoVisibilidade);
     return () => {
       alive = false;
-      clearInterval(id);
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", aoVisibilidade);
     };
   }, [rotas]);
 

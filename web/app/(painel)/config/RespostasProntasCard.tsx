@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { mensagemDe, pedirJson, useCarregar } from "@/app/components/pedirJson";
-import { Aviso, Button, Card, EmptyState, Field, IconButton, Icone, Input, Textarea } from "@/app/components/ui";
+import { Aviso, BotaoConfirmar, Button, Card, EmptyState, Field, Icone, Input, Textarea } from "@/app/components/ui";
 import type { RespostaPronta } from "@/lib/respostas-prontas";
 import { Carregando, FalhaAoCarregar } from "./partes";
 import { ANCORA_CARD, type AoResumir } from "./secoes";
@@ -10,6 +10,7 @@ import { ANCORA_CARD, type AoResumir } from "./secoes";
 /** CRUD de respostas prontas (/atalho) com variáveis {{nome}}, {{atendente}} e {{departamento}}. */
 export function RespostasProntasCard({ aoResumir }: { aoResumir: AoResumir }) {
   const { dados, erro, recarregar, definir } = useCarregar<RespostaPronta[]>("/api/respostas-prontas");
+  const [formAberto, setFormAberto] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [atalho, setAtalho] = useState("");
   const [titulo, setTitulo] = useState("");
@@ -27,6 +28,7 @@ export function RespostasProntasCard({ aoResumir }: { aoResumir: AoResumir }) {
     setTitulo("");
     setTexto("");
     setErroAcao(null);
+    setFormAberto(false);
   }
 
   function editar(item: RespostaPronta) {
@@ -35,6 +37,7 @@ export function RespostasProntasCard({ aoResumir }: { aoResumir: AoResumir }) {
     setTitulo(item.titulo);
     setTexto(item.texto);
     setErroAcao(null);
+    setFormAberto(true);
   }
 
   async function salvar(e: React.FormEvent) {
@@ -65,6 +68,7 @@ export function RespostasProntasCard({ aoResumir }: { aoResumir: AoResumir }) {
       if (editId === id) limparForm();
     } catch (err) {
       setErroAcao(mensagemDe(err));
+      throw err;
     }
   }
 
@@ -75,6 +79,13 @@ export function RespostasProntasCard({ aoResumir }: { aoResumir: AoResumir }) {
       className={ANCORA_CARD}
       titulo="Respostas prontas"
       icone={<Icone nome="chat" />}
+      acoes={
+        dados && !formAberto ? (
+          <Button type="button" size="sm" variant="subtle" onClick={() => setFormAberto(true)}>
+            + Nova resposta
+          </Button>
+        ) : undefined
+      }
       rodape={
         <span className="text-[12.5px] text-fg-faint">
           Digite <code className="rounded-tag bg-elevated px-1.5 py-0.5 font-mono text-fg">/atalho</code> no compositor. Variáveis:{" "}
@@ -95,49 +106,49 @@ export function RespostasProntasCard({ aoResumir }: { aoResumir: AoResumir }) {
             </Aviso>
           )}
 
-          <form onSubmit={(e) => void salvar(e)} className="grid gap-3 rounded-card border border-line bg-surface-2 p-4 sm:grid-cols-2">
-            <Field label="Atalho (sem /)" htmlFor="rp-atalho">
-              <Input
-                id="rp-atalho"
-                value={atalho}
-                onChange={(e) => setAtalho(e.target.value)}
-                placeholder="ex.: boas-vindas"
-                className="font-mono"
-              />
-            </Field>
-            <Field label="Título" htmlFor="rp-titulo">
-              <Input
-                id="rp-titulo"
-                value={titulo}
-                onChange={(e) => setTitulo(e.target.value)}
-                placeholder="ex.: Saudação inicial"
-              />
-            </Field>
-            <Field label="Texto da mensagem" htmlFor="rp-texto" className="sm:col-span-2">
-              <Textarea
-                id="rp-texto"
-                value={texto}
-                onChange={(e) => setTexto(e.target.value)}
-                rows={3}
-                placeholder="Olá {{nome}}, aqui é {{atendente}} do setor {{departamento}}. Como posso ajudar?"
-              />
-            </Field>
-            <div className="flex items-center gap-2 sm:col-span-2">
-              <Button type="submit" size="sm" loading={salvando}>
-                {editId ? "Salvar alteração" : "Adicionar resposta"}
-              </Button>
-              {editId && (
+          {formAberto && (
+            <form onSubmit={(e) => void salvar(e)} className="grid gap-3 rounded-card border border-line bg-surface-2 p-4 sm:grid-cols-2">
+              <Field label="Atalho (sem /)" htmlFor="rp-atalho">
+                <Input
+                  id="rp-atalho"
+                  value={atalho}
+                  onChange={(e) => setAtalho(e.target.value)}
+                  placeholder="ex.: boas-vindas"
+                  className="font-mono"
+                />
+              </Field>
+              <Field label="Título" htmlFor="rp-titulo">
+                <Input
+                  id="rp-titulo"
+                  value={titulo}
+                  onChange={(e) => setTitulo(e.target.value)}
+                  placeholder="ex.: Saudação inicial"
+                />
+              </Field>
+              <Field label="Texto da mensagem" htmlFor="rp-texto" className="sm:col-span-2">
+                <Textarea
+                  id="rp-texto"
+                  value={texto}
+                  onChange={(e) => setTexto(e.target.value)}
+                  rows={3}
+                  placeholder="Olá {{nome}}, aqui é {{atendente}} do setor {{departamento}}. Como posso ajudar?"
+                />
+              </Field>
+              <div className="flex items-center gap-2 sm:col-span-2">
+                <Button type="submit" size="sm" loading={salvando}>
+                  {editId ? "Salvar alteração" : "Adicionar resposta"}
+                </Button>
                 <Button type="button" variant="ghost" size="sm" onClick={limparForm}>
                   Cancelar
                 </Button>
-              )}
-            </div>
-          </form>
+              </div>
+            </form>
+          )}
 
           {dados.length === 0 ? (
             <EmptyState
               title="Nenhuma resposta pronta"
-              description="Crie atalhos acima para responder rapidamente digitando / na conversa."
+              description="Clique em + Nova resposta para criar atalhos e responder digitando / na conversa."
             />
           ) : (
             <ul className="divide-y divide-line rounded-card border border-line">
@@ -156,14 +167,14 @@ export function RespostasProntasCard({ aoResumir }: { aoResumir: AoResumir }) {
                     <Button type="button" variant="ghost" size="sm" onClick={() => editar(item)}>
                       Editar
                     </Button>
-                    <IconButton
-                      size="sm"
-                      aria-label={`Remover /${item.atalho}`}
-                      title="Remover"
-                      onClick={() => void remover(item.id)}
+                    <BotaoConfirmar
+                      variante="ghost"
+                      pergunta={`Remover /${item.atalho}?`}
+                      confirmar="Remover"
+                      aoConfirmar={() => remover(item.id)}
                     >
-                      <Icone nome="x" tamanho={14} />
-                    </IconButton>
+                      Remover…
+                    </BotaoConfirmar>
                   </div>
                 </li>
               ))}

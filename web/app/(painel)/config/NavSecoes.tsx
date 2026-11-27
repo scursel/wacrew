@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { cn, Icone } from "@/app/components/ui";
 import { type IdSecao, type Resumo, SECOES } from "./secoes";
 
@@ -26,15 +27,24 @@ export function NavSecoes({
   aoIr: (id: IdSecao) => void;
 }) {
   const grupos = [...new Set(SECOES.map((s) => s.grupo))];
+  const pilulasRef = useRef<HTMLDivElement>(null);
   const clicar = (id: IdSecao) => (e: React.MouseEvent) => {
     e.preventDefault();
     aoIr(id);
   };
 
+  // No celular, a pílula ativa entra na faixa visível sem empurrar a página.
+  useEffect(() => {
+    const faixa = pilulasRef.current;
+    if (!faixa) return;
+    const ativaEl = faixa.querySelector<HTMLElement>(`[data-secao="${ativa}"]`);
+    ativaEl?.scrollIntoView({ inline: "nearest", block: "nearest" });
+  }, [ativa]);
+
   return (
     <nav aria-label="Seções das configurações" className="sticky top-0 z-10 min-[1021px]:top-8">
-      {/* Computador: lista agrupada. */}
-      <div className="flex flex-col gap-4 max-[1020px]:hidden">
+      {/* Computador: lista agrupada com scroll próprio em telas baixas. */}
+      <div className="flex flex-col gap-4 max-[1020px]:hidden min-[1021px]:max-h-[calc(100dvh-128px)] min-[1021px]:overflow-y-auto">
         {grupos.map((grupo) => (
           <div key={grupo}>
             <p className="mb-1 px-2.5 text-[12px] font-medium text-fg-faint">{grupo}</p>
@@ -42,6 +52,7 @@ export function NavSecoes({
               {SECOES.filter((s) => s.grupo === grupo).map((s) => {
                 const atual = s.id === ativa;
                 const resumo = resumos[s.id];
+                const alerta = resumo?.tom === "danger";
                 return (
                   <li key={s.id}>
                     <a
@@ -54,7 +65,16 @@ export function NavSecoes({
                       )}
                     >
                       {atual && <span aria-hidden className="absolute top-2 bottom-2 left-0 w-0.5 rounded-r-full bg-accent" />}
-                      <Icone nome={s.icone} className={atual ? "text-accent" : "text-fg-faint"} />
+                      <span className="relative shrink-0">
+                        <Icone nome={s.icone} className={atual ? "text-accent" : "text-fg-faint"} />
+                        {alerta && (
+                          <span
+                            aria-hidden
+                            className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-danger"
+                            title="Atenção nesta seção"
+                          />
+                        )}
+                      </span>
                       <span className="min-w-0 flex-1 truncate">{s.rotulo}</span>
                       {resumo && (
                         <span
@@ -77,21 +97,35 @@ export function NavSecoes({
       </div>
 
       {/* Celular e janela estreita: pílulas que rolam para o lado. */}
-      <div className="-mx-6 hidden gap-1.5 overflow-x-auto border-b border-line bg-bg px-6 py-2 [scrollbar-width:none] max-[1020px]:flex max-[860px]:-mx-4 max-[860px]:px-4">
+      <div
+        ref={pilulasRef}
+        className="-mx-6 hidden gap-1.5 overflow-x-auto border-b border-line bg-bg px-6 py-2 [scrollbar-width:none] max-[1020px]:flex max-[860px]:-mx-4 max-[860px]:px-4"
+      >
         {SECOES.map((s) => {
           const atual = s.id === ativa;
+          const alerta = resumos[s.id]?.tom === "danger";
           return (
             <a
               key={s.id}
+              data-secao={s.id}
               href={`#${s.id}`}
               onClick={clicar(s.id)}
               aria-current={atual ? "true" : undefined}
               className={cn(
-                "focus-ring inline-flex h-9 shrink-0 items-center rounded-full px-3.5 text-[13px] font-medium transition-colors",
+                "focus-ring relative inline-flex h-9 shrink-0 items-center rounded-full px-3.5 text-[13px] font-medium transition-colors",
                 atual ? "bg-ink text-on-ink" : "bg-surface text-fg-dim shadow-[inset_0_0_0_1px_var(--color-line)] hover:text-fg",
               )}
             >
               {s.rotulo}
+              {alerta && (
+                <span
+                  aria-hidden
+                  className={cn(
+                    "ml-1.5 inline-block h-1.5 w-1.5 rounded-full",
+                    atual ? "bg-danger" : "bg-danger",
+                  )}
+                />
+              )}
             </a>
           );
         })}

@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { pedirJson, useCarregar } from "@/app/components/pedirJson";
-import { Button, Card, Field, Icone, Input, Textarea, Toggle } from "@/app/components/ui";
+import { Card, Field, Icone, Select, Toggle } from "@/app/components/ui";
 import type { DiaSemana, ExpedienteWebConfig } from "@/lib/expediente-comum";
-import { Carregando, FalhaAoCarregar } from "./partes";
+import { Carregando, FalhaAoCarregar, RodapeSalvar, useSalvar } from "./partes";
 import { ANCORA_CARD, type AoResumir } from "./secoes";
 
 const DIAS: Array<{ id: DiaSemana; rotulo: string }> = [
@@ -17,37 +17,60 @@ const DIAS: Array<{ id: DiaSemana; rotulo: string }> = [
   { id: "dom", rotulo: "Domingo" },
 ];
 
+const FUSOS = [
+  "America/Sao_Paulo",
+  "America/Manaus",
+  "America/Cuiaba",
+  "America/Belem",
+  "America/Fortaleza",
+  "America/Recife",
+  "America/Rio_Branco",
+  "UTC",
+];
+
 export function ExpedienteCard({ aoResumir }: { aoResumir: AoResumir }) {
   const { dados, erro, recarregar, definir } = useCarregar<ExpedienteWebConfig>("/api/expediente");
   const [form, setForm] = useState<ExpedienteWebConfig | null>(null);
-  const [salvando, setSalvando] = useState(false);
-  const [statusMsg, setStatusMsg] = useState<string | null>(null);
+  const [salvo, setSalvo] = useState<ExpedienteWebConfig | null>(null);
+  const salvar = useSalvar();
 
   useEffect(() => {
     if (!dados) return;
     setForm(dados);
-    aoResumir("expediente", {
-      texto: dados.ativo ? "ativo" : "desligado",
-      tom: dados.ativo ? "ok" : undefined,
-    });
-  }, [dados, aoResumir]);
+    setSalvo(dados);
+  }, [dados]);
 
-  async function salvar(e?: React.FormEvent, override?: ExpedienteWebConfig) {
-    e?.preventDefault();
+  useEffect(() => {
+    if (!form) return;
+    aoResumir("expediente", {
+      texto: form.ativo ? "ativo" : "desligado",
+      tom: form.ativo ? "ok" : undefined,
+    });
+  }, [form, aoResumir]);
+
+  async function aoSalvar(override?: ExpedienteWebConfig): Promise<boolean> {
     const payload = override ?? form;
-    if (!payload || salvando) return;
-    setSalvando(true);
-    setStatusMsg(null);
-    try {
+    if (!payload) return false;
+    return salvar.rodar(async () => {
       const res = await pedirJson<{ ok: boolean; config: ExpedienteWebConfig }>("/api/expediente", { corpo: payload });
       definir(res.config);
-      setStatusMsg("Horário comercial salvo.");
-    } catch (err) {
-      setStatusMsg(err instanceof Error ? err.message : "Erro ao salvar.");
-    } finally {
-      setSalvando(false);
-    }
+      setForm(res.config);
+      setSalvo(res.config);
+    });
   }
+
+  async function alternarAtivo(v: boolean) {
+    if (!form) return;
+    const anterior = form;
+    const prox = { ...form, ativo: v };
+    setForm(prox);
+    const ok = await aoSalvar(prox);
+    if (!ok) setForm(anterior);
+  }
+
+  const fusos =
+    form && !FUSOS.includes(form.timezone) ? [...FUSOS, form.timezone] : FUSOS;
+  const alterado = Boolean(form && salvo && JSON.stringify(form) !== JSON.stringify(salvo));
 
   return (
     <Card
@@ -60,39 +83,52 @@ export function ExpedienteCard({ aoResumir }: { aoResumir: AoResumir }) {
         form && (
           <Toggle
             checked={form.ativo}
-            onChange={(v: boolean) => {
-              const prox = { ...form, ativo: v };
-              setForm(prox);
-              void salvar(undefined, prox);
-            }}
-            disabled={salvando}
+            onChange={(v: boolean) => void alternarAtivo(v)}
+            disabled={salvar.salvando}
             aria-label="Ativar horário comercial"
           />
         )
       }
+      rodape={
+        form ? (
+          <RodapeSalvar
+            info="Controla o represamento das entregas humanizadas da IA fora do expediente."
+            estado={salvar.estado}
+            erro={salvar.erro}
+            alterado={alterado}
+            aoSalvar={() => void aoSalvar()}
+            rotulo="Salvar horário"
+          />
+        ) : undefined
+      }
     >
       <p className="mb-3 text-[12.5px] text-fg-dim">
-        Define a janela de atendimento para cálculo de SLA comercial e recados automáticos.
+        Define o horário de funcionamento e, se ligado, represa as entregas humanizadas da IA até a próxima abertura.
       </p>
-      {erro && <FalhaAoCarregar erro={erro} aoTentar={recarregar} />}
+      {erro && <FalhaAoCarregar erro={erro} aoTentar={() => void recarregar()} />}
       {!form && !erro && <Carregando />}
       {form && (
-        <form onSubmit={(e) => void salvar(e)} className="space-y-4">
+        <div className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Fuso horário (IANA)" htmlFor="exp-tz">
-              <Input
+            <Field label="Fuso horário" htmlFor="exp-tz">
+              <Select
                 id="exp-tz"
                 value={form.timezone}
                 onChange={(e) => setForm({ ...form, timezone: e.target.value })}
-                placeholder="America/Sao_Paulo"
-              />
+              >
+                {fusos.map((tz) => (
+                  <option key={tz} value={tz}>
+                    {tz}
+                  </option>
+                ))}
+              </Select>
             </Field>
             <div className="flex items-end pb-1.5">
-              <label className="flex cursor-pointer items-center gap-2 text-[13px] text-fg">
-                <input
-                  type="checkbox"
+              <label className="flex cursor-pointer items-center gap-2.5 text-[13px] text-fg">
+                <Toggle
                   checked={Boolean(form.segurarEnvios)}
-                  onChange={(e) => setForm({ ...form, segurarEnvios: e.target.checked })}
+                  onChange={(v) => setForm({ ...form, segurarEnvios: v })}
+                  aria-label="Segurar entregas humanizadas da IA até a próxima abertura"
                 />
                 Segurar entregas humanizadas da IA até a próxima abertura
               </label>
@@ -107,16 +143,16 @@ export function ExpedienteCard({ aoResumir }: { aoResumir: AoResumir }) {
                 const ligado = Boolean(faixa);
                 return (
                   <div key={d.id} className="flex items-center gap-2 rounded-[6px] border border-line bg-surface px-2.5 py-1.5 text-[12.5px]">
-                    <label className="flex w-24 cursor-pointer items-center gap-1.5 font-medium text-fg">
-                      <input
-                        type="checkbox"
+                    <label className="flex w-28 cursor-pointer items-center gap-2 font-medium text-fg">
+                      <Toggle
                         checked={ligado}
-                        onChange={(e) => {
+                        onChange={(v) => {
                           const nextDias = { ...form.dias };
-                          if (e.target.checked) nextDias[d.id] = ["08:00", "18:00"];
+                          if (v) nextDias[d.id] = ["08:00", "18:00"];
                           else delete nextDias[d.id];
                           setForm({ ...form, dias: nextDias });
                         }}
+                        aria-label={`${d.rotulo} aberto`}
                       />
                       {d.rotulo}
                     </label>
@@ -148,33 +184,8 @@ export function ExpedienteCard({ aoResumir }: { aoResumir: AoResumir }) {
               })}
             </div>
           </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Recado automático dentro do expediente" htmlFor="exp-dentro">
-              <Textarea
-                id="exp-dentro"
-                rows={2}
-                value={form.recado_dentro}
-                onChange={(e) => setForm({ ...form, recado_dentro: e.target.value })}
-              />
-            </Field>
-            <Field label="Recado automático fora do expediente" htmlFor="exp-fora">
-              <Textarea
-                id="exp-fora"
-                rows={2}
-                value={form.recado_fora}
-                onChange={(e) => setForm({ ...form, recado_fora: e.target.value })}
-              />
-            </Field>
-          </div>
-
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-[12.5px] text-fg-dim">{statusMsg ?? ""}</span>
-            <Button type="submit" size="sm" loading={salvando}>
-              Salvar horário
-            </Button>
-          </div>
-        </form>
+          {/* Recados automáticos ficam ocultos na UI, mas os valores do form seguem no payload ao salvar. */}
+        </div>
       )}
     </Card>
   );
