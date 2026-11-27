@@ -12,3 +12,4 @@ groups.config.json
 .DS_Store
 scratchpad
 docs/superpowers
+.commandcode

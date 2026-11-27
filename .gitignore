@@ -29,6 +29,9 @@ groups.config.json
 .mcp.json
 .claude/whatsapp.json
 
+# estado local do agente (taste/memória de sessão)
+.commandcode/
+
 # Material interno (não open-source)
 
 # artefatos locais de ferramenta
