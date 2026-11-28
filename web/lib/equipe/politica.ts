@@ -30,7 +30,7 @@ export function ehNavegacao(headers: Headers, metodo: string): boolean {
 
 export function decidir(quem: Quem | null, pathname: string, ehDocumento: boolean): Decisao {
   if (!quem) return ehDocumento ? { tipo: 'login' } : { tipo: 'negar', status: 401 };
-  if (quem.papel === 'dono') return { tipo: 'seguir' };
+  if (quem.papel === 'dono' || quem.admin) return { tipo: 'seguir' };
   if (areaDoAtendente(pathname)) return { tipo: 'seguir' };
   return ehDocumento ? { tipo: 'redirecionar', para: '/atendimento' } : { tipo: 'negar', status: 403 };
 }

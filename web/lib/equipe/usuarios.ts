@@ -21,6 +21,8 @@ export interface Usuario {
   assinarMensagens?: boolean;
   /** Texto próprio de assinatura (quando vazio, usa o nome da conta). */
   assinatura?: string;
+  /** Acesso de administrador: entra na área do dono, como ele. Só o dono liga e desliga. */
+  admin?: boolean;
 }
 
 export type UsuarioPublico = Omit<Usuario, 'senha'>;

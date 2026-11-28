@@ -7,6 +7,8 @@ export interface DadosEquipe {
   departamentos: Departamento[];
   nomeDono: string;
   donoAssinar: boolean;
+  /** Quem abriu a tela é o dono (e não uma conta com acesso de administrador). */
+  souDono: boolean;
 }
 
 /** Roda um comando da tela de equipe; devolve a resposta ou null se falhou (o erro já foi avisado). */

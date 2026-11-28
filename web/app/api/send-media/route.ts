@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { credenciaisDoDono, metaDoPainel, SESSION_COOKIE } from "@/lib/equipe/autenticar";
+import { carimboDoPainel, credenciaisDoDono, SESSION_COOKIE } from "@/lib/equipe/autenticar";
 import { assinar, deveAssinar, nomeDeQuemEnvia } from "@/lib/equipe/assinatura";
 import { chaveDeSessao } from "@/lib/equipe/sessao";
 import { DONO } from "@/lib/equipe/atribuicoes";
@@ -51,7 +51,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "arquivo maior que 64 MB" }, { status: 413 });
   }
   // Envio do dono pelo painel (cookie, sem Basic) sai carimbado, como no /api/send.
-  const meta = metaDoPainel(
+  const meta = await carimboDoPainel(
     (await cookies()).get(SESSION_COOKIE)?.value,
     req.headers.get("authorization"),
     credenciaisDoDono(),
@@ -92,7 +92,7 @@ export async function POST(req: Request) {
         { status: res.status || 502 },
       );
     }
-    if (meta && typeof slug === "string" && slug) await registrarResposta(slug, DONO);
+    if (meta && typeof slug === "string" && slug) await registrarResposta(slug, meta.usuario === credenciaisDoDono()?.user ? DONO : meta.usuario);
     return NextResponse.json({ ok: true });
   } catch {
     return NextResponse.json(

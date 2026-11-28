@@ -60,6 +60,7 @@ export function ContasCard({
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-2">
                       <span className={cn("truncate text-[13.5px] font-medium", u.ativo ? "text-fg" : "text-fg-dim")}>{u.nome}</span>
+                      {u.admin && <Badge variant="accent">admin</Badge>}
                       {!u.ativo && <Badge>desativada</Badge>}
                     </span>
                     <span className="mt-0.5 block truncate text-[12.5px] text-fg-faint">@{u.login}</span>

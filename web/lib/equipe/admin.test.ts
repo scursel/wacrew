@@ -137,3 +137,45 @@ describe('departamentos e atribuições', () => {
     expect((await atribuicoes.lerAtribuicoes()).chat).toMatchObject({ departamento: null, origemDepartamento: null });
   });
 });
+
+describe('acesso de administrador', () => {
+  const DONO = { porDono: true };
+  const ADMIN = { porDono: false };
+
+  it('só o dono liga e desliga o acesso de administrador', async () => {
+    await admin.executar({ acao: 'criar', login: 'gil', nome: 'Gil', senha: 'senha-do-gil-1' }, 'operador', new Date(), DONO);
+    await admin.executar({ acao: 'criar', login: 'lia', nome: 'Lia', senha: 'senha-da-lia-1' }, 'operador', new Date(), DONO);
+
+    await expect(admin.executar({ acao: 'editar', login: 'lia', nome: 'Lia', admin: true }, 'operador', new Date(), ADMIN)).rejects.toThrow(/só o dono/);
+    expect((await store.acharUsuario('lia'))?.admin).toBeUndefined();
+
+    const r = await admin.executar({ acao: 'editar', login: 'gil', nome: 'Gil', admin: true }, 'operador', new Date(), DONO);
+    expect(r.usuario?.admin).toBe(true);
+    await admin.executar({ acao: 'editar', login: 'gil', nome: 'Gil', admin: false }, 'operador', new Date(), DONO);
+    expect((await store.acharUsuario('gil'))?.admin).toBeUndefined();
+  });
+
+  it('quem não é o dono não troca senha, desativa nem apaga conta de administrador', async () => {
+    await admin.executar({ acao: 'editar', login: 'gil', nome: 'Gil', admin: true }, 'operador', new Date(), DONO);
+    for (const c of [
+      { acao: 'senha', login: 'gil' },
+      { acao: 'ativo', login: 'gil', ativo: false },
+      { acao: 'apagar', login: 'gil' },
+    ] as const) {
+      await expect(admin.executar(c, 'operador', new Date(), ADMIN)).rejects.toThrow(/só o dono/);
+    }
+    expect((await store.acharUsuario('gil'))?.ativo).toBe(true);
+    // Conta comum continua sob o administrador.
+    await expect(admin.executar({ acao: 'ativo', login: 'lia', ativo: false }, 'operador', new Date(), ADMIN)).resolves.toBeDefined();
+  });
+
+  it('o padrão, sem dizer quem pede, é tratado como quem não é o dono', async () => {
+    await expect(admin.executar({ acao: 'apagar', login: 'gil' }, 'operador')).rejects.toThrow(/só o dono/);
+  });
+
+  it('corpo da rede: admin precisa ser booleano', async () => {
+    await expect(
+      admin.executar({ acao: 'editar', login: 'lia', nome: 'Lia', admin: 'sim' } as never, 'operador', new Date(), DONO),
+    ).rejects.toThrow(/comando inválido/);
+  });
+});

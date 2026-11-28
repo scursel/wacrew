@@ -137,6 +137,7 @@ export function EquipeView() {
                   departamentos={dados?.departamentos ?? []}
                   rodar={rodar}
                   aoSenhaNova={(senha) => setRetorno({ tom: "senha", login: conta.login, senha })}
+                  souDono={dados?.souDono === true}
                 />
               )}
             </div>

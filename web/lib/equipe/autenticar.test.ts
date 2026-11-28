@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { credenciaisDoDono, donoPorBasic, igualSeguro, metaDoPainel, quemPelaSessao } from './autenticar';
+import { carimboDoPainel, credenciaisDoDono, donoPorBasic, igualSeguro, metaDoPainel, quemPelaSessao } from './autenticar';
 import { assinarSessao, novaSessao } from './sessao';
 import type { Usuario } from './usuarios';
 
@@ -11,7 +11,8 @@ const ana: Usuario = {
   login: 'ana', nome: 'Ana', senha: 'scrypt$a$b', ativo: true, versao: 2,
   chats: [], criadoEm: '2026-10-06T00:00:00.000Z', ultimoAcesso: null,
 };
-const achar = async (login: string) => (login === 'ana' ? ana : null);
+const bia: Usuario = { ...ana, login: 'bia', nome: 'Bia', admin: true };
+const achar = async (login: string) => (login === 'ana' ? ana : login === 'bia' ? bia : null);
 
 describe('dono por Basic', () => {
   it('confere usuário e senha', () => {
@@ -38,11 +39,20 @@ describe('quemPelaSessao', () => {
   it('atendente ativo com a versão atual entra', async () => {
     expect(await quemPelaSessao(tok('ana', 'atendente', 2), cred, achar, CHAVE, AGORA)).toEqual({ papel: 'atendente', login: 'ana' });
   });
+  it('conta com acesso de administrador sai marcada como admin; a sem não leva a marca', async () => {
+    expect(await quemPelaSessao(tok('bia', 'atendente', 2), cred, achar, CHAVE, AGORA)).toEqual({ papel: 'atendente', login: 'bia', admin: true });
+    expect(await quemPelaSessao(tok('ana', 'atendente', 2), cred, achar, CHAVE, AGORA)).not.toHaveProperty('admin');
+  });
+  it('admin desativado ou com versão antiga não entra', async () => {
+    expect(await quemPelaSessao(tok('bia', 'atendente', 1), cred, achar, CHAVE, AGORA)).toBeNull();
+    const desativada = async () => ({ ...bia, ativo: false });
+    expect(await quemPelaSessao(tok('bia', 'atendente', 2), cred, desativada, CHAVE, AGORA)).toBeNull();
+  });
   it('versão antiga, conta desativada ou apagada → null', async () => {
     expect(await quemPelaSessao(tok('ana', 'atendente', 1), cred, achar, CHAVE, AGORA)).toBeNull();
     const desativada = async () => ({ ...ana, ativo: false });
     expect(await quemPelaSessao(tok('ana', 'atendente', 2), cred, desativada, CHAVE, AGORA)).toBeNull();
-    expect(await quemPelaSessao(tok('bia', 'atendente', 2), cred, achar, CHAVE, AGORA)).toBeNull();
+    expect(await quemPelaSessao(tok('zeca', 'atendente', 2), cred, achar, CHAVE, AGORA)).toBeNull();
   });
   it('sem cookie → null', async () => {
     expect(await quemPelaSessao(undefined, cred, achar, CHAVE, AGORA)).toBeNull();
@@ -76,5 +86,24 @@ describe('metaDoPainel (carimbo do envio do dono pelo painel)', () => {
   it('painel sem login configurado (dev local) → sem carimbo', () => {
     expect(metaDoPainel(tok('operador', 'dono'), null, null, CHAVE, AGORA)).toBeUndefined();
     expect(metaDoPainel(tok('operador', 'dono'), null, cred, null, AGORA)).toBeUndefined();
+  });
+});
+
+describe('carimboDoPainel (envio pelo painel do dono: dono ou admin)', () => {
+  const tok = (login: string, papel: 'dono' | 'atendente', v = 0) => assinarSessao(novaSessao(login, papel, v, AGORA), CHAVE);
+
+  it('dono pelo cookie → carimbo do dono', async () => {
+    expect(await carimboDoPainel(tok('operador', 'dono'), null, cred, CHAVE, achar, AGORA)).toEqual({ ator: 'painel', usuario: 'operador' });
+  });
+  it('admin pelo cookie → carimbo com o login dele', async () => {
+    expect(await carimboDoPainel(tok('bia', 'atendente', 2), null, cred, CHAVE, achar, AGORA)).toEqual({ ator: 'painel', usuario: 'bia' });
+  });
+  it('atendente sem admin, admin com versão antiga ou Basic → sem carimbo', async () => {
+    expect(await carimboDoPainel(tok('ana', 'atendente', 2), null, cred, CHAVE, achar, AGORA)).toBeUndefined();
+    expect(await carimboDoPainel(tok('bia', 'atendente', 1), null, cred, CHAVE, achar, AGORA)).toBeUndefined();
+    expect(await carimboDoPainel(tok('bia', 'atendente', 2), basic('operador', 'senha-do-dono'), cred, CHAVE, achar, AGORA)).toBeUndefined();
+  });
+  it('painel sem login configurado → sem carimbo', async () => {
+    expect(await carimboDoPainel(tok('bia', 'atendente', 2), null, null, CHAVE, achar, AGORA)).toBeUndefined();
   });
 });

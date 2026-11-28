@@ -1,8 +1,8 @@
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { slugsIrmaosDeDm } from '../dm-irmaos';
 import { ErroHttp, slugCanonico } from './acesso';
 import { DONO, registrar } from './atribuicoes';
-import { credenciaisDoDono, quemPelaSessao } from './autenticar';
+import { credenciaisDoDono, type Quem, quemDoPedido, quemPelaSessao } from './autenticar';
 import { lerNomeDono } from './departamentos';
 import { contatosDeIdentidade, slugsExistentes } from './identidade';
 import { chaveDeSessao, SESSION_COOKIE } from './sessao';
@@ -27,6 +27,16 @@ export async function quemAtendeDoPedido(): Promise<QuemAtende> {
   const usuario = await acharUsuario(quem.login);
   if (!usuario || !usuario.ativo) throw new ErroHttp(401, 'Autenticação necessária.');
   return { id: usuario.login, nome: usuario.nome, papel: 'atendente' };
+}
+
+/**
+ * Quem faz o pedido na área do dono: o dono (Basic ou cookie) ou uma conta com acesso
+ * de administrador. Sem login configurado (dev local) o painel é aberto e vale o dono.
+ */
+export async function quemNoPainel(): Promise<Quem | null> {
+  const cred = credenciaisDoDono();
+  if (!cred) return { papel: 'dono', login: process.env.PANEL_USER?.trim() || 'você' };
+  return quemDoPedido((await headers()).get('authorization'), (await cookies()).get(SESSION_COOKIE)?.value, cred);
 }
 
 export async function canonicoGlobal(): Promise<(slug: string) => string> {

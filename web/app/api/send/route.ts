@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { credenciaisDoDono, metaDoPainel, SESSION_COOKIE } from "@/lib/equipe/autenticar";
+import { carimboDoPainel, credenciaisDoDono, SESSION_COOKIE } from "@/lib/equipe/autenticar";
 import { assinar, assinarBaloes, deveAssinar, nomeDeQuemEnvia } from "@/lib/equipe/assinatura";
 import { chaveDeSessao } from "@/lib/equipe/sessao";
 import { DONO } from "@/lib/equipe/atribuicoes";
@@ -49,7 +49,7 @@ export async function POST(req: Request) {
   const meta =
     body.humano === true
       ? undefined
-      : metaDoPainel(
+      : await carimboDoPainel(
           (await cookies()).get(SESSION_COOKIE)?.value,
           req.headers.get("authorization"),
           credenciaisDoDono(),
@@ -93,7 +93,7 @@ export async function POST(req: Request) {
         { status: res.status || 502 },
       );
     }
-    if (meta && typeof body.slug === "string" && body.slug) await registrarResposta(body.slug, DONO);
+    if (meta && typeof body.slug === "string" && body.slug) await registrarResposta(body.slug, meta.usuario === credenciaisDoDono()?.user ? DONO : meta.usuario);
     // 202 = ticket agendado (entrega humanizada assíncrona); 200 = síncrono/aguardar.
     return NextResponse.json(data, { status: res.status });
   } catch (err) {

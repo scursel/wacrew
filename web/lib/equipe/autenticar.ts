@@ -10,6 +10,8 @@ export interface Credenciais {
 export interface Quem {
   papel: Papel;
   login: string;
+  /** Conta da equipe com acesso de administrador: alcança a área do dono. Lido da conta a cada pedido. */
+  admin?: true;
 }
 
 export function credenciaisDoDono(env: Partial<NodeJS.ProcessEnv> = process.env): Credenciais | null {
@@ -48,7 +50,7 @@ export async function quemPelaSessao(
   if (s.p === 'dono') return s.u === cred.user ? { papel: 'dono', login: s.u } : null;
   const u = await achar(s.u);
   if (!u || !u.ativo || u.versao !== s.v) return null;
-  return { papel: 'atendente', login: u.login };
+  return u.admin === true ? { papel: 'atendente', login: u.login, admin: true } : { papel: 'atendente', login: u.login };
 }
 
 /**
@@ -68,6 +70,25 @@ export function metaDoPainel(
   if (/^basic\s/i.test(authorization ?? '')) return undefined;
   const s = lerSessao(cookieToken, chave, agoraS);
   return s?.p === 'dono' && s.u === cred.user ? { ator: 'painel', usuario: cred.user } : undefined;
+}
+
+/**
+ * Carimbo de quem envia pela área do dono: o próprio dono (como `metaDoPainel`) ou
+ * uma conta com acesso de administrador, com o login dela. Basic nunca carimba.
+ */
+export async function carimboDoPainel(
+  cookieToken: string | undefined,
+  authorization: string | null,
+  cred: Credenciais | null,
+  chave: string | null,
+  achar: (login: string) => Promise<Usuario | null> = acharUsuario,
+  agoraS?: number,
+): Promise<{ ator: 'painel'; usuario: string } | undefined> {
+  const doDono = metaDoPainel(cookieToken, authorization, cred, chave, agoraS);
+  if (doDono || !cred || !chave || !cookieToken) return doDono;
+  if (/^basic\s/i.test(authorization ?? '')) return undefined;
+  const quem = await quemPelaSessao(cookieToken, cred, achar, chave, agoraS);
+  return quem?.admin ? { ator: 'painel', usuario: quem.login } : undefined;
 }
 
 export async function quemDoPedido(

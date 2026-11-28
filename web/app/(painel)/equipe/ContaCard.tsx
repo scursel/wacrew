@@ -12,20 +12,27 @@ export function ContaCard({
   departamentos,
   rodar,
   aoSenhaNova,
+  souDono,
 }: {
   conta: UsuarioPublico;
   departamentos: Departamento[];
   rodar: RodarComando;
   aoSenhaNova: (senha: string) => void;
+  /** Só o dono muda o acesso de administrador e mexe em conta de administrador. */
+  souDono: boolean;
 }) {
   const [renomeando, setRenomeando] = useState(false);
   const [nome, setNome] = useState(conta.nome);
   const [assinaturaTexto, setAssinaturaTexto] = useState(conta.assinatura ?? "");
-  type CampoOcupado = "nome" | "ativo" | "assinatura" | "assinaturaTexto" | "restringir" | "copiloto";
+  type CampoOcupado = "nome" | "ativo" | "assinatura" | "assinaturaTexto" | "restringir" | "copiloto" | "admin";
   const [ocupado, setOcupado] = useState<CampoOcupado | null>(null);
   const depsDaConta = departamentos.filter((d) => d.membros.includes(conta.login));
   const temDepartamento = depsDaConta.length > 0;
   const rotuloAssinatura = (assinaturaTexto.trim() || conta.nome);
+  const admin = conta.admin === true;
+  /** Conta de administrador fica fora do alcance de outro administrador. */
+  const travada = admin && !souDono;
+  const SO_DONO = "Só o dono mexe em conta de administrador.";
 
   async function comOcupado(qual: CampoOcupado, fn: () => Promise<void>) {
     setOcupado(qual);
@@ -50,9 +57,12 @@ export function ContaCard({
       icone={<Avatar nome={conta.nome} tipo="dm" tamanho="xs" />}
       meta={`@${conta.login}`}
       acoes={
-        <Badge variant={conta.ativo ? "ok" : "neutral"} dot>
-          {conta.ativo ? "Ativa" : "Desativada"}
-        </Badge>
+        <>
+          {admin && <Badge variant="accent">Administrador</Badge>}
+          <Badge variant={conta.ativo ? "ok" : "neutral"} dot>
+            {conta.ativo ? "Ativa" : "Desativada"}
+          </Badge>
+        </>
       }
     >
       {renomeando ? (
@@ -90,14 +100,40 @@ export function ContaCard({
             rotulo: "Acesso",
             valor: !conta.ativo
               ? "Bloqueado até você ativar de novo"
-              : conta.restringirDepartamentos
+              : admin
+                ? "Administrador: entra em todo o painel, como o dono"
+                : conta.restringirDepartamentos
                 ? "Restrito aos seus departamentos e atribuídas"
                 : "Entra e vê todas as conversas",
           },
         ]}
       />
 
-      <div className="mt-4 flex flex-col gap-2.5 rounded-control border border-line bg-surface-2 p-3 text-[12.5px]">
+      <div className="mt-4 rounded-control border border-line bg-surface-2 p-3 text-[12.5px]">
+        <label className={`flex items-start justify-between gap-3 ${souDono ? "cursor-pointer" : "cursor-not-allowed"}`}>
+          <span className="min-w-0">
+            <span className="block font-medium text-fg">Acesso de administrador</span>
+            <span className="mt-0.5 block leading-relaxed text-fg-dim">
+              Entra na área do dono: Caixa completa, Clientes, Configurações, Equipe, Agenda e WhatsApp. Não pode dar esse
+              acesso a outra pessoa nem mexer em outra conta de administrador.
+              {!souDono && " Só o dono muda esta opção."}
+            </span>
+          </span>
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={admin}
+            disabled={!souDono || ocupado !== null}
+            onChange={(e) =>
+              void comOcupado("admin", async () => {
+                await rodar({ acao: "editar", login: conta.login, nome: conta.nome, admin: e.target.checked });
+              })
+            }
+          />
+        </label>
+      </div>
+
+      <div className="mt-3 flex flex-col gap-2.5 rounded-control border border-line bg-surface-2 p-3 text-[12.5px]">
         <label className={`flex items-center justify-between gap-3 ${temDepartamento ? "cursor-pointer text-fg" : "cursor-not-allowed text-fg-faint"}`}>
           <span>
             Assinar mensagens (*{rotuloAssinatura}:*)
@@ -194,6 +230,7 @@ export function ContaCard({
         <BotaoConfirmar
           variante="subtle"
           perigo={false}
+          disabled={travada}
           pergunta="A senha atual deixa de valer e a sessão aberta cai."
           confirmar="Gerar nova senha"
           aoConfirmar={async () => {
@@ -207,13 +244,15 @@ export function ContaCard({
           variant="subtle"
           size="sm"
           loading={ocupado === "ativo"}
-          title={conta.ativo ? "A sessão aberta cai na hora." : undefined}
+          disabled={travada}
+          title={travada ? SO_DONO : conta.ativo ? "A sessão aberta cai na hora." : undefined}
           onClick={() => void comOcupado("ativo", async () => void (await rodar({ acao: "ativo", login: conta.login, ativo: !conta.ativo })))}
         >
           {conta.ativo ? "Desativar" : "Ativar"}
         </Button>
         <BotaoConfirmar
           variante="ghost"
+          disabled={travada}
           pergunta={`Apagar a conta de ${conta.nome}?`}
           confirmar="Apagar conta"
           aoConfirmar={async () => void (await rodar({ acao: "apagar", login: conta.login }))}

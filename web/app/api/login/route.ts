@@ -18,10 +18,10 @@ const SENHA_MAX = 256;
 /** Hash fixo pra gastar o mesmo tempo quando o login não existe. */
 let hashFalso: Promise<string> | null = null;
 
-/** Destino depois de entrar: atendente só vai pra dentro da própria área. */
-function destino(papel: Papel, next: unknown): string {
+/** Destino depois de entrar: atendente só vai pra dentro da própria área; dono e administrador, pra qualquer uma. */
+function destino(papel: Papel, next: unknown, admin = false): string {
   const n = caminhoInterno(next);
-  if (papel === "dono") return n;
+  if (papel === "dono" || admin) return n;
   return n === "/atendimento" || n.startsWith("/atendimento/") ? n : "/atendimento";
 }
 
@@ -43,6 +43,7 @@ export async function POST(req: Request) {
   const pass = valido ? (given!.pass as string) : "";
 
   let sessao: ReturnType<typeof novaSessao> | null = null;
+  let admin = false;
   if (valido && pass.length <= SENHA_MAX) {
     if (igualSeguro(user, cred.user) && igualSeguro(pass, cred.pass)) {
       sessao = novaSessao(cred.user, "dono", 0);
@@ -52,6 +53,7 @@ export async function POST(req: Request) {
         if (u?.ativo) {
           if (await verificarSenha(pass, u.senha)) {
             sessao = novaSessao(u.login, "atendente", u.versao);
+            admin = u.admin === true;
           }
         } else {
           hashFalso ??= hashSenha("x");
@@ -79,5 +81,5 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "usuário ou senha incorretos" }, { status: 401 });
   }
 
-  return comCookieDeSessao(NextResponse.json({ ok: true, destino: destino(sessao.p, given?.next) }), sessao, chave, req);
+  return comCookieDeSessao(NextResponse.json({ ok: true, destino: destino(sessao.p, given?.next, admin) }), sessao, chave, req);
 }

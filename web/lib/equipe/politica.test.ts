@@ -3,6 +3,7 @@ import { areaDoAtendente, decidir, ehNavegacao } from './politica';
 
 const dono = { papel: 'dono' as const, login: 'operador' };
 const ana = { papel: 'atendente' as const, login: 'ana' };
+const bia = { papel: 'atendente' as const, login: 'bia', admin: true as const };
 
 describe('areaDoAtendente', () => {
   it('casa só a área e as rotas dela', () => {
@@ -31,6 +32,12 @@ describe('decidir', () => {
     expect(decidir(ana, '/', true)).toEqual({ tipo: 'redirecionar', para: '/atendimento' });
     expect(decidir(ana, '/api/media/grupo-a/audio/x.ogg', false)).toEqual({ tipo: 'negar', status: 403 });
     expect(decidir(ana, '/api/send', false)).toEqual({ tipo: 'negar', status: 403 });
+  });
+  it('atendente com acesso de administrador passa na área do dono', () => {
+    expect(decidir(bia, '/config', true)).toEqual({ tipo: 'seguir' });
+    expect(decidir(bia, '/', true)).toEqual({ tipo: 'seguir' });
+    expect(decidir(bia, '/api/send', false)).toEqual({ tipo: 'seguir' });
+    expect(decidir(bia, '/atendimento/g/grupo-a', true)).toEqual({ tipo: 'seguir' });
   });
 });
 

@@ -14,6 +14,8 @@ export type Comando =
       restringirDepartamentos?: boolean;
       assinarMensagens?: boolean;
       assinatura?: string;
+      /** Acesso de administrador; só o dono muda. */
+      admin?: boolean;
     }
   | { acao: 'senha'; login: string; senha?: string }
   | { acao: 'ativo'; login: string; ativo: boolean }
@@ -49,7 +51,7 @@ function validarComando(c: unknown): asserts c is Comando {
       case 'criar':
         return typeof x.nome === 'string' && senhaOk;
       case 'editar':
-        return typeof x.nome === 'string';
+        return typeof x.nome === 'string' && (x.admin === undefined || typeof x.admin === 'boolean');
       case 'senha':
         return senhaOk;
       case 'ativo':
@@ -83,12 +85,28 @@ function achar(lista: Usuario[], login: string): Usuario {
   return u;
 }
 
+/** Quem pede o comando. Sem dizer, vale o mais restrito: não é o dono. */
+export interface QuemPede {
+  porDono: boolean;
+}
+
+const SO_DONO = 'só o dono muda o acesso de administrador ou mexe em conta de administrador';
+
 export async function executar(
   c: Comando,
   donoLogin: string,
   agora = new Date(),
+  quemPede: QuemPede = { porDono: false },
 ): Promise<{ usuario?: UsuarioPublico; senhaGerada?: string }> {
   validarComando(c);
+  // Um administrador não cria outro nem derruba um: senão o acesso se espalha sem o dono saber.
+  if (!quemPede.porDono) {
+    if (c.acao === 'editar' && typeof c.admin === 'boolean') throw new Error(SO_DONO);
+    if (c.acao === 'senha' || c.acao === 'ativo' || c.acao === 'apagar') {
+      const alvo = (await lerUsuarios()).find((u) => u.login === c.login.trim().toLowerCase());
+      if (alvo?.admin === true) throw new Error(SO_DONO);
+    }
+  }
   if (c.acao === 'nome-dono') {
     if (c.assinarMensagens === true) {
       const deps = await lerDepartamentos();
@@ -200,6 +218,8 @@ export async function executar(
       if (typeof c.copilotoLiberado === 'boolean') u.copilotoLiberado = c.copilotoLiberado;
       if (typeof c.restringirDepartamentos === 'boolean') u.restringirDepartamentos = c.restringirDepartamentos;
       if (typeof c.assinarMensagens === 'boolean') u.assinarMensagens = c.assinarMensagens;
+      if (c.admin === true) u.admin = true;
+      else if (c.admin === false) delete u.admin;
       if (typeof c.assinatura === 'string') {
         const limpa = c.assinatura.trim();
         if (limpa) u.assinatura = limpa;

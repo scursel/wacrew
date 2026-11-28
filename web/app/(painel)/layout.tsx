@@ -1,4 +1,6 @@
 import { conversasDaRequisicao } from "@/lib/caixa-dados";
+import { quemNoPainel } from "@/lib/equipe/quem";
+import { acharUsuario } from "@/lib/equipe/usuarios";
 import { CommandPalette } from "../components/CommandPalette";
 import { ProvedorTempoReal } from "../components/TempoRealProvider";
 import { Trilho } from "../components/Trilho";
@@ -11,7 +13,7 @@ export default async function PainelLayout({
   children: React.ReactNode;
 }>) {
   const groups = await conversasDaRequisicao();
-  const usuario = process.env.PANEL_USER?.trim() || "você";
+  const usuario = await nomeNoMenu();
   return (
     <ProvedorTempoReal>
       {/* Desktop: trilho | conteúdo. Celular: conteúdo em cima, trilho vira barra embaixo. */}
@@ -22,4 +24,12 @@ export default async function PainelLayout({
       <CommandPalette groups={groups} />
     </ProvedorTempoReal>
   );
+}
+
+/** Nome no menu da conta: o do dono ou o da conta com acesso de administrador que entrou. */
+async function nomeNoMenu(): Promise<string> {
+  const dono = process.env.PANEL_USER?.trim() || "você";
+  const quem = await quemNoPainel().catch(() => null);
+  if (!quem?.admin) return dono;
+  return (await acharUsuario(quem.login))?.nome || quem.login;
 }

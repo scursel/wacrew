@@ -91,6 +91,12 @@ plantão, sync e envios humanos não levam assinatura. O envio passa pelos bloqu
 de cookie, não Basic) também sai carimbado, com `usuario: <PANEL_USER>`; o MCP, o plantão e o
 sync usam Basic e não levam carimbo.
 
+- **Acesso de administrador:** opção na conta em `/equipe` (campo `admin` em
+  `.equipe/usuarios.json`). A conta entra em toda a área do dono (`decidir` em
+  `web/lib/equipe/politica.ts`), lido da conta a cada pedido: desligar vale na hora. Só o dono
+  (PANEL_USER) liga ou desliga, e só ele troca senha, desativa ou apaga conta de administrador
+  (`executar` em `web/lib/equipe/admin.ts`, `porDono`). Envio de admin pela área do dono sai
+  carimbado com o login dele (`carimboDoPainel`).
 - **Plantão:** `Painel (ana): texto` (ou `Painel (<PANEL_USER>)`, o operador pelo painel) é
   CONTEXTO, igual ao `Você (celular)` — alguém já respondeu; não responder por cima nem repetir.
 - **Fila:** envio pelo painel interrompe o ticket vivo do agente no chat (`operador_respondeu`).
