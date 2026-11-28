@@ -490,8 +490,8 @@ export function Notificacoes({ groups }: { groups: GroupMeta[] }) {
         aria-haspopup="dialog"
         aria-expanded={aberto}
         onClick={alternarPainel}
-        title={naoLidas > 0 ? `Notificações (${naoLidas} novas)` : "Notificações"}
-        aria-label={naoLidas > 0 ? `Notificações, ${naoLidas} não lidas` : "Notificações"}
+        title={naoLidas > 0 ? `Notificações (${naoLidas} ${naoLidas === 1 ? "nova" : "novas"})` : "Notificações"}
+        aria-label={naoLidas > 0 ? `Notificações, ${naoLidas} ${naoLidas === 1 ? "não lida" : "não lidas"}` : "Notificações"}
         className={`relative grid h-[38px] w-[38px] place-items-center rounded-[9px] transition-colors ${
           aberto
             ? "bg-accent-soft text-accent"

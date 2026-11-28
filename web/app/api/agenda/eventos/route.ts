@@ -25,7 +25,7 @@ export async function GET(req: Request) {
     const q = new URL(req.url).searchParams;
     const de = q.get("de");
     const ate = q.get("ate");
-    if (!de || !ate) throw new ErroAgenda("entrada_invalida", "de e ate são obrigatórios");
+    if (!de || !ate) throw new ErroAgenda("entrada_invalida", '"de" e "ate" são obrigatórios');
     const agendas = q
       .get("agendas")
       ?.split(",")

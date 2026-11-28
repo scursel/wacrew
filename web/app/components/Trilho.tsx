@@ -168,7 +168,7 @@ export function Trilho({ groups, usuario }: { groups: GroupSummary[]; usuario: s
             <Link
               key={g.slug}
               href={rotas.chat(g.slug)}
-              title={g.unread > 0 ? `${g.name}, ${g.unread} não lidas` : g.name}
+              title={g.unread > 0 ? `${g.name}, ${g.unread} ${g.unread === 1 ? "não lida" : "não lidas"}` : g.name}
               aria-label={g.name}
               aria-current={pathname === rotas.chat(g.slug) ? "page" : undefined}
               className="group relative block"

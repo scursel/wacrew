@@ -1714,7 +1714,7 @@ export function EscritorioView({
                               aria-expanded={aberto}
                               aria-label={`${
                                 aberto ? 'Recolher' : 'Expandir'
-                              } ${contatos.length} contatos de ${c.nome}`}
+                              } ${contatos.length} ${contatos.length === 1 ? 'contato' : 'contatos'} de ${c.nome}`}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setExpandedProjetos((prev) => ({

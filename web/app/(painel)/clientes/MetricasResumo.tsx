@@ -137,7 +137,7 @@ export function MetricasResumo() {
                     key={g.slug}
                     style={{ "--hue": corDoMatiz(matizDoNome(g.nome)) } as CSSProperties}
                     className="relative isolate flex h-[18px] items-center gap-2 px-1.5 text-[12px]"
-                    title={`${g.nome}: ${g.total} mensagens`}
+                    title={`${g.nome}: ${g.total} ${g.total === 1 ? "mensagem" : "mensagens"}`}
                   >
                     <span
                       aria-hidden

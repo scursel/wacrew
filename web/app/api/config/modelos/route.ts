@@ -51,7 +51,7 @@ function lerCorpo(body: ModelosPost): { erro: string } | { baseUrl?: string; cha
   }
   if (body.funcoes !== undefined) {
     if (!body.funcoes || typeof body.funcoes !== "object" || Array.isArray(body.funcoes)) {
-      return { erro: "funcoes precisa ser um objeto" };
+      return { erro: '"funcoes" precisa ser um objeto' };
     }
     const funcoes: Partial<Record<FuncaoIA, string | null>> = {};
     for (const [k, v] of Object.entries(body.funcoes as Record<string, unknown>)) {

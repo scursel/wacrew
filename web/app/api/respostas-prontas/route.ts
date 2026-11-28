@@ -16,7 +16,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
   }
   if (typeof body.atalho !== "string" || typeof body.titulo !== "string" || typeof body.texto !== "string") {
-    return NextResponse.json({ error: "atalho, titulo e texto são obrigatórios" }, { status: 400 });
+    return NextResponse.json({ error: '"atalho", "titulo" e "texto" são obrigatórios' }, { status: 400 });
   }
   try {
     const lista = await upsertRespostaPronta({

@@ -40,7 +40,7 @@ export async function POST(req: Request) {
     };
     const slug = body.slug?.trim();
     if (!slug || !body.acao) {
-      return NextResponse.json({ error: 'slug e acao obrigatorios' }, { status: 400 });
+      return NextResponse.json({ error: '"slug" e "acao" são obrigatórios' }, { status: 400 });
     }
 
     const atual = await lerConfigAssentos();
@@ -48,7 +48,7 @@ export async function POST(req: Request) {
     if (body.acao === 'vincular_contato') {
       const nome = body.contato?.nome?.trim();
       if (!nome) {
-        return NextResponse.json({ error: 'nome do contato obrigatorio' }, { status: 400 });
+        return NextResponse.json({ error: 'nome do contato é obrigatório' }, { status: 400 });
       }
       const mapa = { ...(atual.contatosExtrasPorProjeto ?? {}) };
       const lista = [...(mapa[slug] ?? [])];

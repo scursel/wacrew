@@ -16,7 +16,7 @@ export const POST = rota("write", async ({ req }) => {
   const slug = corpo.slug?.trim() ?? "";
   if (!slugValido(slug)) throw new ErroApi("invalid_request", "slug inválido");
   if (typeof corpo.ate !== "string" || Number.isNaN(Date.parse(corpo.ate))) {
-    throw new ErroApi("invalid_request", "ate deve ser um timestamp ISO");
+    throw new ErroApi("invalid_request", '"ate" deve ser um timestamp ISO');
   }
   const avancou = await avancarTriagemSeen(slug, corpo.ate);
   return respostaOk({ slug, ate: corpo.ate, avancou });

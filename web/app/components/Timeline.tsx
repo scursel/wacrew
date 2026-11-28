@@ -14,9 +14,11 @@ import {
 } from "@/lib/caixa";
 import type { MessageView } from "@/lib/data";
 import { fundirMensagens, mesclarCaudaMensagens } from "@/lib/dm-irmaos";
+import { type EventoAuditoriaView, filtrarEventos, textoEventoAuditoria } from "@/lib/eventos-atribuicao";
 import type { PresencaAgente } from "@/lib/equipe/presenca-interna";
 import { instanteLongo } from "@/lib/formatar-data";
 import type { NotaInterna } from "@/lib/notas-internas";
+import { frasePresencaEquipe } from "@/lib/presenca-equipe";
 import type { ResultadoBuscaMensagem } from "@/lib/busca-mensagens";
 import type { UltimoAtendimento } from "@/lib/ultimo-atendimento";
 import { casaBusca } from "@/lib/busca";
@@ -51,45 +53,17 @@ function AvisoLine({ aviso }: { aviso: AvisoEntrega }) {
   );
 }
 
-interface EventoAuditoriaView {
-  ts: string;
-  slug: string;
-  tipo: string;
-  por?: string;
-  para?: string | null;
-  departamento?: string | null;
-  nota?: string;
-  porNome: string | null;
-  paraNome: string | null;
-  departamentoNome: string | null;
-}
-
-function textoEventoAuditoria(e: EventoAuditoriaView): string {
-  const ator = e.porNome ?? e.por ?? "Alguém";
-  if (e.tipo === "assumir") return `${ator} assumiu a conversa`;
-  if (e.tipo === "soltar") return `${ator} soltou a conversa`;
-  if (e.tipo === "resolver") return `${ator} marcou como resolvida`;
-  if (e.tipo === "reabrir") return `${ator} reabriu a conversa`;
-  if (e.tipo === "delegar") {
-    const dest = e.paraNome ?? e.para ?? "colega";
-    return `${ator} delegou para ${dest}${e.nota ? ` — "${e.nota}"` : ""}`;
-  }
-  if (e.tipo === "departamento") {
-    return e.departamentoNome
-      ? `${ator} moveu para ${e.departamentoNome}`
-      : `${ator} removeu do departamento`;
-  }
-  if (e.tipo === "responder") return `${ator} respondeu`;
-  return `${ator} · ${e.tipo}`;
-}
-
 function EventoAuditoriaLine({ evento }: { evento: EventoAuditoriaView }) {
+  const daIA = evento.tipo === "sugestao";
   return (
     <div
-      className="mt-3 inline-flex max-w-full items-center gap-1.5 self-center rounded-full bg-surface-2 px-3 py-1 text-center text-[11.5px] text-fg-faint"
+      className={cn(
+        "mt-3 inline-flex max-w-full items-center gap-1.5 self-center rounded-full bg-surface-2 px-3 py-1 text-center text-[11.5px]",
+        daIA ? "text-id-ia" : "text-fg-faint",
+      )}
       title={instanteLongo(evento.ts)}
     >
-      <Icone nome="history" tamanho={12} className="shrink-0" />
+      <Icone nome={daIA ? "spark" : "history"} tamanho={12} className="shrink-0" />
       <span>{textoEventoAuditoria(evento)}</span>
       <span className="font-mono text-[10.5px] opacity-80">{evento.ts.slice(11, 16)}</span>
     </div>
@@ -677,6 +651,9 @@ export function Timeline({
 
   const entregas = useMemo(() => ligarEntregas(messages, eventos, agora), [messages, eventos, agora]);
 
+  const eventosVisiveis = useMemo(() => filtrarEventos(eventosAuditoria), [eventosAuditoria]);
+  const frasePresenca = useMemo(() => frasePresencaEquipe(outrosAgentes), [outrosAgentes]);
+
   // Mensagens, avisos da fila, notas privadas e histórico de atribuição em ordem cronológica.
   const itens = useMemo(() => {
     type Item =
@@ -693,14 +670,14 @@ export function Timeline({
     for (const n of notasInternas) {
       if (!inicio || n.timestamp >= inicio) lista.push({ tipo: "nota", n });
     }
-    for (const e of eventosAuditoria) {
+    for (const e of eventosVisiveis) {
       if (e.tipo === "responder") continue;
       if (!inicio || e.ts >= inicio) lista.push({ tipo: "evento", e });
     }
     const ts = (i: Item) =>
       i.tipo === "msg" ? i.m.timestamp : i.tipo === "aviso" ? i.a.ts : i.tipo === "nota" ? i.n.timestamp : i.e.ts;
     return lista.sort((x, y) => ts(x).localeCompare(ts(y)));
-  }, [shown, entregas.avisos, notasInternas, eventosAuditoria, mediaFilter]);
+  }, [shown, entregas.avisos, notasInternas, eventosVisiveis, mediaFilter]);
 
   // Quem continua o bloco da mensagem anterior e o rótulo de cada bloco da IA.
   const blocos = useMemo(() => {
@@ -980,7 +957,7 @@ export function Timeline({
             {ultimoAtendimento && !shown.some((m) => m.id === ultimoAtendimento.reabertoPorMensagem) && (
               <ObservacaoAtendimento atendimento={ultimoAtendimento} />
             )}
-            {shown.length === 0 && notasInternas.length === 0 && eventosAuditoria.length === 0 ? (
+            {shown.length === 0 && notasInternas.length === 0 && eventosVisiveis.length === 0 ? (
               <p className="mt-16 text-center text-[13.5px] text-fg-faint">
                 {mediaFilter === "all" ? "Nenhuma mensagem capturada ainda nesta conversa." : "Nada deste tipo nas mensagens carregadas."}
               </p>
@@ -1109,19 +1086,10 @@ export function Timeline({
         )}
       </div>
 
-      {outrosAgentes.length > 0 && (
+      {frasePresenca && (
         <div className="mx-auto flex w-full max-w-[776px] items-center gap-2 px-7 pb-1.5 text-[12px] text-warn max-[860px]:px-3">
           <span className="h-2 w-2 animate-pulse rounded-full bg-warn" />
-          <span>
-            {outrosAgentes.some((a) => a.estado === "digitando")
-              ? `${outrosAgentes
-                  .filter((a) => a.estado === "digitando")
-                  .map((a) => a.nome)
-                  .join(", ")} está digitando nesta conversa`
-              : `${outrosAgentes.map((a) => a.nome).join(", ")} ${
-                  outrosAgentes.length === 1 ? "está visualizando" : "estão visualizando"
-                } nesta conversa`}
-          </span>
+          <span>{frasePresenca}</span>
         </div>
       )}
 

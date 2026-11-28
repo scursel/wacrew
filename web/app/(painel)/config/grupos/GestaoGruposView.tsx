@@ -83,7 +83,11 @@ const PASSOS: Array<{ id: IdSecao; icone: NomeIcone; titulo: string; texto: stri
     icone: "users",
     titulo: "Escolha os grupos",
     texto: "Só os grupos monitorados têm as mensagens capturadas. Grupo novo começa desligado. Tags ajudam a filtrar.",
-    rotuloResumo: (t) => `${t} monitorados`,
+    rotuloResumo: (t) => {
+      // Vem como "monitorados/total" (o mesmo resumo da navegação de Configurações).
+      const [m, total] = t.split("/");
+      return total ? `${m} de ${total} ${total === "1" ? "grupo monitorado" : "grupos monitorados"}` : t;
+    },
   },
   {
     id: "time",

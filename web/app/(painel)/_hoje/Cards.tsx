@@ -192,7 +192,7 @@ export function CardLimites({ limites }: { limites: DadosHoje["limites"] }) {
                 avatar={<Avatar nome={l.nome} tipo={tipoPeloSlug(l.slug)} fotoUrl={foto(l.avatarPath)} tamanho="xs" />}
                 valor={l.valor}
                 limite={l.limite}
-                rotuloAcessivel={`${l.nome}: ${l.valor} de ${l.limite} mensagens em 30 dias`}
+                rotuloAcessivel={`${l.nome}: ${l.valor} de ${l.limite} ${l.limite === 1 ? "mensagem" : "mensagens"} em 30 dias`}
               />
             </Link>
           ))}
