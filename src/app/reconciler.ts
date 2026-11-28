@@ -39,6 +39,8 @@ export interface ReconcilerDeps {
   avatarUrl(jid: string): Promise<string | null>;
   /** Baixa e grava a foto de um contato no diretório do slug. */
   saveAvatarDm(slug: string, url: string | null): Promise<boolean>;
+  /** Snapshot opcional do backfill sob demanda de grupos (sidecars). */
+  backfillGrupos?(): unknown;
 }
 
 export interface ReconcilerResumo {
@@ -58,6 +60,8 @@ interface StatusFile {
   resumo: ReconcilerResumo | null;
   /** slug -> última âncora já pedida (não repete pedido pra mesma âncora). */
   ancorasTentadas: Record<string, string>;
+  /** Estado do backfill sob demanda ao ligar captura de grupo (se houver). */
+  backfillGrupos?: unknown;
 }
 
 /** Teto de pedidos de histórico por tick — cada pedido acorda o celular. */
@@ -405,6 +409,7 @@ export class Reconciler {
       intervaloMin,
       resumo,
       ancorasTentadas: this.ancorasTentadas,
+      ...(this.deps.backfillGrupos ? { backfillGrupos: this.deps.backfillGrupos() } : {}),
     };
     await writeJsonAtomicNode(this.statusPath(), status).catch((err) =>
       logger.warn({ err }, 'Reconciliador: falha ao gravar status.'),

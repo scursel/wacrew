@@ -74,7 +74,14 @@ export function GruposCard({ aoResumir }: { aoResumir: AoResumir }) {
           </span>
         ) : undefined
       }
-      rodape={grupos && grupos.length > 0 ? <span>Monitorar liga a captura das mensagens do grupo. Grupo novo começa desligado.</span> : undefined}
+      rodape={
+        grupos && grupos.length > 0 ? (
+          <span>
+            Monitorar liga a captura das mensagens do grupo. Ao ligar, o histórico recente é pedido ao celular (quando ele
+            responde). Grupo novo começa desligado.
+          </span>
+        ) : undefined
+      }
     >
       {erro ? (
         <FalhaAoCarregar erro={erro} aoTentar={() => void recarregar()} />

@@ -37,15 +37,25 @@ import type {
 } from '../core/message.js';
 import type { MessageStore } from '../core/ports.js';
 import { logger } from '../logger.js';
+import type { AncorasGruposStore } from '../storage/ancorasGruposStore.js';
 import { mediaFileName, slugForGroup } from '../storage/paths.js';
 import type { PresenceStore } from '../storage/presenceStore.js';
 import { dispararWebhookCollector } from './webhooks.js';
+
+/** Hooks opcionais: âncoras de grupo (mesmo sem watch) e aviso pós-gravação. */
+export interface CollectorHooks {
+  ancoras?: AncorasGruposStore;
+  /** Disparado só depois de gravar no jsonl (grupo monitorado). */
+  onGrupoGravado?: (groupJid: string) => void;
+}
 
 /**
  * Orquestra o fluxo de uma mensagem: filtra grupos monitorados, baixa a mídia
  * (com dedup) e grava o registro. Depende só das portas — nunca do Baileys.
  */
 export class Collector {
+  private hooks: CollectorHooks = {};
+
   constructor(
     private readonly store: MessageStore,
     private readonly groups: GroupConfig,
@@ -53,7 +63,22 @@ export class Collector {
     private readonly dataDir?: string,
   ) {}
 
+  /** Liga sidecars/callbacks depois do composition root (evita ciclo de ctor). */
+  setHooks(hooks: CollectorHooks): void {
+    this.hooks = hooks;
+  }
+
   async handle(msg: InboundMessage): Promise<void> {
+    // Âncora de TODO grupo (monitorado ou não): só id/hora/remetente — nunca conteúdo.
+    if (!msg.isDirect) {
+      this.hooks.ancoras?.registrar(msg.groupJid, {
+        id: msg.id,
+        timestampMs: msg.timestamp.getTime(),
+        fromMe: msg.fromMe,
+        sender: msg.sender,
+      });
+    }
+
     // DMs são sempre coletados; grupos só quando marcados (opt-in).
     if (!msg.isDirect && !this.groups.isWatched(msg.groupJid)) return;
 
@@ -86,6 +111,7 @@ export class Collector {
 
     try {
       await this.store.saveRecord(slug, record);
+      if (!msg.isDirect) this.hooks.onGrupoGravado?.(msg.groupJid);
       if (this.dataDir) {
         void dispararWebhookCollector(
           this.dataDir,
