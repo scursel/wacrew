@@ -19,6 +19,8 @@ import { mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
+import { BackfillGrupos } from './app/backfill-grupos.js';
+import { gruposLigadosAgora } from './app/backfill-grupos-core.js';
 import { Collector } from './app/collector.js';
 import { Despacho } from './app/despacho.js';
 import { githubIssues } from './app/github-issues.js';
@@ -31,6 +33,7 @@ import { startControlServer } from './control/server.js';
 import type { GroupInfo } from './core/message.js';
 import { FilaEnvio } from './humano/fila.js';
 import { logger } from './logger.js';
+import { AncorasGruposStore } from './storage/ancorasGruposStore.js';
 import { FileStore } from './storage/fileStore.js';
 import { setGroupSlugOverrides } from './storage/paths.js';
 import { PresenceStore } from './storage/presenceStore.js';
@@ -53,6 +56,8 @@ async function main(): Promise<void> {
   const store = new FileStore(env.DATA_DIR);
   const status = new StatusStore(env.DATA_DIR);
   const presence = new PresenceStore(env.DATA_DIR);
+  const ancorasGrupos = new AncorasGruposStore(env.DATA_DIR);
+  await ancorasGrupos.load();
   const collector = new Collector(store, groupConfig, presence, env.DATA_DIR);
   const gateway = new BaileysGateway(env.AUTH_DIR, env.DATA_DIR, env.PAIR_NUMBER);
 
@@ -79,6 +84,20 @@ async function main(): Promise<void> {
     }
   });
 
+  // Backfill sob demanda: ao ligar watch, pede histórico recente ao celular.
+  const backfillGrupos = new BackfillGrupos({
+    dataDir: env.DATA_DIR,
+    connected: () => conectado,
+    slugOf: (jid) => groupConfig.slugOf(jid),
+    fetchHistoryBefore: (jid, ancora, count) => gateway.fetchHistoryBefore(jid, ancora, count),
+    ancoras: ancorasGrupos,
+  });
+  await backfillGrupos.start();
+  collector.setHooks({
+    ancoras: ancorasGrupos,
+    onGrupoGravado: (jid) => backfillGrupos.onMensagemGravada(jid),
+  });
+
   // Reconciliador: nomes + buracos de histórico, no intervalo do painel.
   const reconciler = new Reconciler({
     dataDir: env.DATA_DIR,
@@ -90,8 +109,12 @@ async function main(): Promise<void> {
     phoneOf: (userPart) => gateway.phoneOfContact(userPart),
     avatarUrl: (jid) => gateway.getAvatarUrl(jid),
     saveAvatarDm: (slug, url) => collector.saveAvatarDm(slug, url),
+    backfillGrupos: () => backfillGrupos.resumo(),
   });
   void reconciler.start();
+
+  // Startup: retoma ciclos incompletos e agenda monitorados sem messages.jsonl.
+  void backfillGrupos.agendarMonitorados(groupConfig.watchedEntries().map((e) => e.id));
 
   // Radar de sem-resposta: pendências + digest pro operador, no padrão do reconciler.
   const radar = new Radar({
@@ -191,9 +214,9 @@ async function main(): Promise<void> {
     void collector.handleDelete(del);
   });
 
-  watchGroupsConfig(env.GROUPS_CONFIG, groupConfig, status);
+  watchGroupsConfig(env.GROUPS_CONFIG, groupConfig, status, backfillGrupos);
   startControlServer(gateway, env.CONTROL_PORT, [env.DATA_DIR, tmpdir()], reconciler, radar, fila);
-  registerShutdown(gateway, despacho, fila);
+  registerShutdown(gateway, despacho, fila, backfillGrupos);
 
   logger.info('🚀 Coletor iniciando...');
   await gateway.start();
@@ -218,7 +241,12 @@ async function refreshAvatars(
 }
 
 /** Recarrega o groups.config.json quando o arquivo muda (sem reiniciar). */
-function watchGroupsConfig(path: string, groupConfig: GroupConfig, status: StatusStore): void {
+function watchGroupsConfig(
+  path: string,
+  groupConfig: GroupConfig,
+  status: StatusStore,
+  backfill: BackfillGrupos,
+): void {
   const target = resolve(path);
   const dir = dirname(target);
   const file = basename(target);
@@ -229,13 +257,22 @@ function watchGroupsConfig(path: string, groupConfig: GroupConfig, status: Statu
       if (changed !== file) return;
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
+        const antes = new Set(groupConfig.watchedEntries().map((e) => e.id));
         groupConfig
           .load()
           .then(async () => {
             setGroupSlugOverrides(groupConfig.slugMap());
             const watched = groupConfig.watchedCount();
             await status.setWatchedCount(watched);
-            logger.info({ watched }, '♻️  groups.config.json recarregado.');
+            const depois = new Set(groupConfig.watchedEntries().map((e) => e.id));
+            const ligados = gruposLigadosAgora(antes, depois);
+            for (const jid of ligados) {
+              await backfill.agendar(jid, { acabouDeLigar: true });
+            }
+            logger.info(
+              { watched, backfill: ligados.length || undefined },
+              '♻️  groups.config.json recarregado.',
+            );
           })
           .catch((err) => logger.error({ err }, 'Falha ao recarregar groups.config.json.'));
       }, 250);
@@ -246,12 +283,18 @@ function watchGroupsConfig(path: string, groupConfig: GroupConfig, status: Statu
 }
 
 /** Encerramento limpo em SIGINT/SIGTERM. */
-function registerShutdown(gateway: BaileysGateway, despacho: Despacho, fila: FilaEnvio): void {
+function registerShutdown(
+  gateway: BaileysGateway,
+  despacho: Despacho,
+  fila: FilaEnvio,
+  backfill: BackfillGrupos,
+): void {
   let closing = false;
   const shutdown = async (signal: string): Promise<void> => {
     if (closing) return;
     closing = true;
     logger.info({ signal }, '🛑 Encerrando...');
+    backfill.stop();
     despacho.stop();
     await fila.parar();
     await gateway.stop();

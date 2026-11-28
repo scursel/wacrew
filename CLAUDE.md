@@ -265,6 +265,14 @@ nome atual ≠ slug; `ler_mensagens`/`responder` aceitam o nome novo e traduzem 
 Chat que "parou de receber" enquanto os outros seguem vivos → suspeite de rename antes de achar
 que o sync quebrou. Split legado (rename anterior à feature): `npm run migrar-slug -- <canonico> <duplicado>`.
 
+## Backfill ao ligar a captura de grupo
+
+Ao marcar `watch: true`, o coletor pede ao celular o histórico recente (`fetchMessageHistory`),
+página a página (50), até 30 dias antes da âncora inicial ou 500 msgs, ou página vazia. Âncoras
+de todo grupo (mesmo sem watch) ficam em `DATA_DIR/.ancoras-grupos.json` — só id/hora/remetente,
+nunca conteúdo. Estado do ciclo: `DATA_DIR/.backfill-grupos.json` (retoma após reinício). Logs:
+`📜 Backfill de grupo pedido` / `concluído` / `sem resposta`. Sem socket, adia.
+
 ## Organização da info de mensagem (pra não se perder)
 
 O `ler_mensagens` separa coisas que antes confundiam a leitura:
