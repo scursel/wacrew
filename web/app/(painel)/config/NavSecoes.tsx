@@ -51,7 +51,7 @@ export function NavSecoes({
             <p className="mb-1 px-2.5 text-[12px] font-medium text-fg-faint">{grupo}</p>
             <ul className="flex flex-col gap-0.5">
               {SECOES.filter((s) => s.grupo === grupo).map((s) => {
-                const atual = s.id === ativa;
+                const atual = !s.href && s.id === ativa;
                 const resumo = resumos[s.id];
                 const alerta = resumo?.tom === "danger";
                 return (
@@ -104,7 +104,7 @@ export function NavSecoes({
         className="-mx-6 hidden gap-1.5 overflow-x-auto border-b border-line bg-bg px-6 py-2 [scrollbar-width:none] max-[1020px]:flex max-[860px]:-mx-4 max-[860px]:px-4"
       >
         {SECOES.map((s) => {
-          const atual = s.id === ativa;
+          const atual = !s.href && s.id === ativa;
           const alerta = resumos[s.id]?.tom === "danger";
           return (
             <Link

@@ -37,5 +37,8 @@ export const SECOES: Array<{ id: IdSecao; rotulo: string; grupo: string; icone: 
   { id: "webhooks", rotulo: "Webhooks", grupo: "Integrações", icone: "link" },
 ];
 
+/** Seções que mudaram para a tela de Gestão de grupos: links antigos (/config#time) seguem para lá. */
+export const MOVIDAS_PARA_GRUPOS: ReadonlySet<string> = new Set(["time", "sincronizacao"]);
+
 /** Margem de rolagem dos cards: abaixo da barra parada no topo (e da faixa de seções no celular). */
 export const ANCORA_CARD = "scroll-mt-8 max-[1020px]:scroll-mt-20";

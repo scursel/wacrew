@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CabecalhoPagina, Card, CorpoPagina, Grade12, Icone, type NomeIcone } from "@/app/components/ui";
 import { GruposCard } from "../GruposCard";
 import type { IdSecao, Resumo } from "../secoes";
@@ -17,6 +17,35 @@ export function GestaoGruposView() {
   const resumir = useCallback((id: IdSecao, r: Resumo) => {
     setResumos((prev) => (prev[id]?.texto === r.texto && prev[id]?.tom === r.tom ? prev : { ...prev, [id]: r }));
   }, []);
+
+  // Link direto para um card (/config/grupos#time, ou o antigo /config#time que vem para cá):
+  // rola ao abrir e de novo quando os cards terminam de carregar, porque os de cima crescem.
+  // Para assim que a pessoa rola por conta própria.
+  const rolagem = useRef<HTMLDivElement>(null);
+  const seguirAncora = useRef(true);
+  const carregados = Object.keys(resumos).length;
+  useEffect(() => {
+    const el = rolagem.current;
+    if (!el) return;
+    const parar = () => {
+      seguirAncora.current = false;
+    };
+    el.addEventListener("wheel", parar, { passive: true });
+    el.addEventListener("touchmove", parar, { passive: true });
+    el.addEventListener("keydown", parar);
+    return () => {
+      el.removeEventListener("wheel", parar);
+      el.removeEventListener("touchmove", parar);
+      el.removeEventListener("keydown", parar);
+    };
+  }, []);
+  useEffect(() => {
+    if (!seguirAncora.current) return;
+    const id = decodeURIComponent(window.location.hash.slice(1));
+    if (!id) return;
+    const quadro = requestAnimationFrame(() => document.getElementById(id)?.scrollIntoView({ block: "start" }));
+    return () => cancelAnimationFrame(quadro);
+  }, [carregados]);
 
   return (
     <>
@@ -34,7 +63,7 @@ export function GestaoGruposView() {
           </Link>
         }
       />
-      <CorpoPagina>
+      <CorpoPagina ref={rolagem}>
         <div className="min-[1021px]:max-w-[960px]">
           <Grade12>
             <ComoFunciona resumos={resumos} />
@@ -60,7 +89,7 @@ const PASSOS: Array<{ id: IdSecao; icone: NomeIcone; titulo: string; texto: stri
     id: "time",
     icone: "user",
     titulo: "Marque o seu time",
-    texto: "Quem é do time não conta como cliente esperando resposta e aparece como resposta de vocês nos resumos.",
+    texto: "Quando a última mensagem é de alguém do time, o grupo sai de cliente esperando. Nos resumos, a fala dele conta como de vocês.",
     rotuloResumo: (t) => (t === "1" ? "1 pessoa no time" : `${t} pessoas no time`),
   },
   {

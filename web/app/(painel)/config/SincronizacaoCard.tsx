@@ -36,8 +36,8 @@ export function SincronizacaoCard({ aoResumir }: { aoResumir: AoResumir }) {
   }, [dados]);
 
   useEffect(() => {
-    aoResumir("sincronizacao", { texto: `${salvo} min` });
-  }, [aoResumir, salvo]);
+    if (dados) aoResumir("sincronizacao", { texto: `${salvo} min` });
+  }, [aoResumir, dados, salvo]);
 
   async function aoSalvar() {
     const lido = lerMinutos(intervalo);

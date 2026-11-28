@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CorpoPagina, Grade12 } from "@/app/components/ui";
 import { secaoAtiva } from "@/lib/secao-ativa";
@@ -11,7 +12,7 @@ import { NavSecoes } from "./NavSecoes";
 import { NotificacoesCard } from "./NotificacoesCard";
 import { RadarCard } from "./RadarCard";
 import { RespostasProntasCard } from "./RespostasProntasCard";
-import { type IdSecao, type Resumo, SECOES } from "./secoes";
+import { type IdSecao, MOVIDAS_PARA_GRUPOS, type Resumo, SECOES } from "./secoes";
 import { TranscricaoCard } from "./TranscricaoCard";
 import { WebhooksCard } from "./WebhooksCard";
 
@@ -19,6 +20,7 @@ import { WebhooksCard } from "./WebhooksCard";
 export function ConfigView() {
   const rolagem = useRef<HTMLDivElement>(null);
   const cardsRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
   const [ativa, setAtiva] = useState<IdSecao>("conexao");
   const [resumos, setResumos] = useState<Partial<Record<IdSecao, Resumo>>>({});
 
@@ -46,7 +48,8 @@ export function ConfigView() {
     const medir = () => {
       quadro = 0;
       const base = el.getBoundingClientRect().top - el.scrollTop;
-      const posicoes = SECOES.flatMap((s) => {
+      // Seção que é link para outra tela não vira "atual": quem rola ainda está em Configurações.
+      const posicoes = SECOES.filter((s) => !s.href).flatMap((s) => {
         const alvo = document.getElementById(s.id);
         return alvo ? [{ id: s.id, topo: alvo.getBoundingClientRect().top - base }] : [];
       });
@@ -75,11 +78,15 @@ export function ConfigView() {
     };
   }, []);
 
-  // Link direto para uma seção (/config#radar).
+  // Link direto para uma seção (/config#radar). As que mudaram de tela (/config#time) seguem para lá.
   useEffect(() => {
     const id = decodeURIComponent(window.location.hash.slice(1));
+    if (MOVIDAS_PARA_GRUPOS.has(id)) {
+      router.replace(`/config/grupos#${id}`);
+      return;
+    }
     if (SECOES.some((s) => s.id === id)) document.getElementById(id)?.scrollIntoView({ block: "start" });
-  }, []);
+  }, [router]);
 
   // Cliques em âncoras internas (#modelos, #conexao…) rolam suavemente pela mesma rota.
   useEffect(() => {
