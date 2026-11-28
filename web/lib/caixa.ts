@@ -67,6 +67,8 @@ export interface ConversaFila extends AtribuicaoFila {
   /** "Quem: texto" da última mensagem. */
   previa: string | null;
   ultimaEm: string | null;
+  /** Grupo com captura ligada e ainda sem mensagem: quando a captura começou (entra na ordem por aqui). */
+  capturaDesde?: string | null;
   naoLidas: number;
   fixada: boolean;
   silenciada: boolean;
@@ -261,7 +263,7 @@ export function montarFila(
       previa: dividirPrevia(c?.previa),
       naoLidas: c?.naoLidas ?? 0,
       silenciada: c?.silenciada ?? false,
-      ultimaEm: c?.ultimaEm ?? null,
+      ultimaEm: c?.ultimaEm ?? c?.capturaDesde ?? null,
       departamento: c?.departamento ?? null,
       departamentoNome: c?.departamentoNome ?? null,
       departamentoSugerido: c?.departamentoSugerido ?? false,

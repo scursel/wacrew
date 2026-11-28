@@ -1,8 +1,10 @@
-import { access, readdir, readFile } from 'node:fs/promises';
+import { access, readdir, readFile, stat } from 'node:fs/promises';
 import { basename } from 'node:path';
+import { readGroupsConfig } from './config';
 import { buildContacts, type Contacts, displayNameOf, numberFromJid } from './contacts';
 import { CHATS_FILE, DATA_DIR, safeDataPath } from './paths';
 import { remetenteDaLinha } from './remetente';
+import { canonicalSlug } from './resolve-grupo';
 import { cachedByStat } from './file-cache';
 import { readTriage } from './triage';
 
@@ -209,6 +211,13 @@ export interface GroupSummary {
   archived?: boolean;
   /** Última atividade segundo o WhatsApp (unix s), se conhecida. */
   lastActivity?: number | null;
+  /**
+   * Grupo com captura ligada e nenhuma mensagem salva ainda: quando a captura começou
+   * (ISO, pela pasta que o coletor cria), para ele aparecer na lista na hora certa.
+   */
+  capturaDesde?: string | null;
+  /** JID do grupo vazio acima (do groups.config): sem mensagem não há de onde tirar. */
+  jid?: string;
   /** Etiquetas do chat (empresa/contrato/pessoal) definidas na triagem. */
   etiquetas?: string[];
 }
@@ -335,10 +344,11 @@ export async function listGroups(opts: { lastSeen?: Record<string, string> } = {
   if (!(await exists(DATA_DIR))) return [];
   const entries = await readdir(DATA_DIR, { withFileTypes: true });
   const groups: GroupSummary[] = [];
-  const [{ lastSeen, etiquetas }, chatStates, contacts] = await Promise.all([
+  const [{ lastSeen, etiquetas }, chatStates, contacts, gruposConfig] = await Promise.all([
     readTriage(),
     readChatStates(),
     buildContacts(),
+    readGroupsConfig(),
   ]);
 
   // Paralelo + cache por mtime: o caminho quente vira um stat() por chat;
@@ -382,6 +392,7 @@ export async function listGroups(opts: { lastSeen?: Record<string, string> } = {
     }),
   );
   groups.push(...summaries.filter((g): g is GroupSummary => g !== null));
+  groups.push(...(await monitoradosSemMensagem(gruposConfig, new Set(groups.map((g) => g.slug)), chatStates, etiquetas)));
 
   // Ordenação: fixados no topo (por pinnedAt desc, depois por recência), depois
   // ativos por recência, arquivados por último.
@@ -402,10 +413,61 @@ export async function listGroups(opts: { lastSeen?: Record<string, string> } = {
       if (pa !== pb) return pb - pa;
     }
 
-    // Demais: mais recentes primeiro.
-    return (b.lastTimestamp ?? '').localeCompare(a.lastTimestamp ?? '');
+    // Demais: mais recentes primeiro (grupo ainda vazio entra pela hora em que a captura começou).
+    return (b.lastTimestamp ?? b.capturaDesde ?? '').localeCompare(a.lastTimestamp ?? a.capturaDesde ?? '');
   });
   return groups;
+}
+
+export const PREVIA_CAPTURA_VAZIA = 'Captura ligada, ainda sem mensagens';
+
+/**
+ * Grupo que acabou de ter a captura ligada não tem messages.jsonl até alguém escrever:
+ * sem isto ele some da lista e parece que ligar não funcionou. Entra vazio, com a hora
+ * da pasta que o coletor cria (sem pasta, não há hora confiável e ele vai pro fim).
+ */
+async function monitoradosSemMensagem(
+  gruposConfig: Awaited<ReturnType<typeof readGroupsConfig>>,
+  jaListados: Set<string>,
+  chatStates: Awaited<ReturnType<typeof readChatStates>>,
+  etiquetas: Record<string, string[]>,
+): Promise<GroupSummary[]> {
+  const vistos = new Set<string>();
+  const out: GroupSummary[] = [];
+  for (const g of gruposConfig) {
+    if (!g.watch) continue;
+    const slug = canonicalSlug(g);
+    // Slug vem do arquivo de config: só um nome de pasta simples, nunca caminho nem oculto.
+    if (!slug || /[/\\]/.test(slug) || slug.startsWith('.') || jaListados.has(slug) || vistos.has(slug)) continue;
+    vistos.add(slug);
+    let dir: string;
+    try {
+      dir = safeDataPath(slug);
+    } catch {
+      continue;
+    }
+    const pasta = await stat(dir).catch(() => null);
+    const hasAvatar = pasta ? await exists(safeDataPath(slug, 'avatar.jpg')) : false;
+    const state = chatStates[slug];
+    out.push({
+      slug,
+      name: g.name,
+      messageCount: 0,
+      lastTimestamp: null,
+      capturaDesde: pasta?.isDirectory() ? pasta.mtime.toISOString() : null,
+      ...(g.id.endsWith('@g.us') ? { jid: g.id } : {}),
+      avatarPath: hasAvatar ? `${slug}/avatar.jpg` : null,
+      lastPreview: PREVIA_CAPTURA_VAZIA,
+      unread: 0,
+      pinned: state?.pinned ?? false,
+      pinnedAt: state?.pinnedAt ?? null,
+      muted: state?.muted ?? false,
+      archived: state?.archived ?? false,
+      lastActivity: state?.lastActivity ?? null,
+      etiquetas: etiquetas[slug] ?? [],
+    });
+  }
+  return out;
 }
 
 /** Lê reações do grupo e agrupa por mensagem-alvo (última por reagente vence). */

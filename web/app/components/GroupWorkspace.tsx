@@ -31,6 +31,7 @@ export function GroupWorkspace({
   painel,
   agora,
   donoLogin = null,
+  jidReserva = null,
   atribuicao,
   resolvida = false,
   lastSeenInicial = null,
@@ -49,6 +50,8 @@ export function GroupWorkspace({
   agora: number;
   /** Login do dono no painel, para separar o envio dele do da equipe. */
   donoLogin?: string | null;
+  /** JID do grupo quando a conversa ainda não tem mensagem (captura recém-ligada). */
+  jidReserva?: string | null;
   /** Responsável e departamento da conversa, e quem pode receber (ver `atribuicaoDaConversaAberta`). */
   atribuicao: DadosAtribuicaoConversa;
   /** Marcada como resolvida e o cliente não escreveu depois (ver `estaResolvida`): botão verde. */
@@ -441,6 +444,7 @@ export function GroupWorkspace({
         />
         <Timeline
           slug={slug}
+          jidReserva={jidReserva}
           groupName={groupName}
           messages={messages}
           ultimoAtendimentoInicial={ultimoAtendimento}

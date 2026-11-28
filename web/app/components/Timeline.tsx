@@ -170,6 +170,7 @@ export function Timeline({
   total,
   agoraInicial,
   donoLogin = null,
+  jidReserva = null,
   cabecalho,
   draft,
   onPedirResumo,
@@ -189,6 +190,8 @@ export function Timeline({
   agoraInicial: number;
   /** Login do dono no painel: separa "você pelo painel" de alguém da equipe. */
   donoLogin?: string | null;
+  /** JID do grupo quando a conversa ainda não tem mensagem (captura recém-ligada). */
+  jidReserva?: string | null;
   cabecalho: CabecalhoConversa;
   /** Rascunho do copiloto do painel para o compositor. */
   draft?: { text: string; nonce: number } | null;
@@ -687,7 +690,7 @@ export function Timeline({
 
   const contagem = new Intl.NumberFormat("pt-BR").format(totalCount);
   const filtroAtivo = mediaFilter !== "all";
-  const groupJidAtual = ultimoGroupJid(messages);
+  const groupJidAtual = ultimoGroupJid(messages) ?? jidReserva;
 
   const unreadInfo = useMemo(() => {
     if (!unreadCutoff || mediaFilter !== "all") return null;

@@ -102,6 +102,7 @@ export function paraConversa(
     avatarPath: g.avatarPath,
     previa: g.lastPreview,
     ultimaEm: g.lastTimestamp,
+    ...(g.capturaDesde ? { capturaDesde: g.capturaDesde } : {}),
     naoLidas: markedUnread ? Math.max(1, g.unread) : g.unread,
     fixada: Boolean(g.pinned),
     silenciada: Boolean(g.muted),

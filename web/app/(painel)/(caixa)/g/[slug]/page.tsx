@@ -55,6 +55,7 @@ export default async function GroupPage({
       painel={painel}
       agora={Date.now()}
       donoLogin={process.env.PANEL_USER?.trim() || null}
+      jidReserva={g?.jid ?? null}
       atribuicao={atribuicao}
       resolvida={await estaResolvida(irmaos, triage.resolved, registros)}
       lastSeenInicial={triage.lastSeen[canonico] ?? triage.lastSeen[slug] ?? null}
