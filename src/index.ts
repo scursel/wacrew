@@ -136,7 +136,7 @@ async function main(): Promise<void> {
     await status.setWatchedCount(watched);
     if (watched === 0) {
       logger.warn(
-        `Nenhum grupo monitorado. Use o painel (Configurações › Grupos) ou edite ` +
+        `Nenhum grupo monitorado. Use o painel (Configurações › Gestão de grupos) ou edite ` +
           `"${env.GROUPS_CONFIG}" marcando "watch": true (recarrego sozinho, sem reiniciar).`,
       );
     } else {

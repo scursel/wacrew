@@ -84,7 +84,7 @@ export function TimeCard({ aoResumir }: { aoResumir: AoResumir }) {
       ) : (
         <>
           <p className="max-w-[72ch] text-[13.5px] leading-relaxed text-fg-dim">
-            Marque quem é da sua equipe. Os resumos usam isso para separar o que o cliente disse do que vocês responderam.
+            Marque quem é da sua equipe nos grupos. Mensagem de quem está no time não deixa o grupo como cliente esperando, e os resumos separam o que o cliente disse do que vocês responderam.
           </p>
           {erroAcao && (
             <Aviso tom="erro" aoFechar={() => setErroAcao(null)} className="mt-3">

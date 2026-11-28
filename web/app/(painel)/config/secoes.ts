@@ -24,17 +24,16 @@ export interface Resumo {
 export type AoResumir = (id: IdSecao, resumo: Resumo) => void;
 
 /** Ordem da página. A navegação agrupa por `grupo`, na ordem em que os grupos aparecem. */
-export const SECOES: Array<{ id: IdSecao; rotulo: string; grupo: string; icone: NomeIcone }> = [
+/** `href` leva para outra tela em vez de rolar até o card (a Gestão de grupos tem página própria). */
+export const SECOES: Array<{ id: IdSecao; rotulo: string; grupo: string; icone: NomeIcone; href?: string }> = [
   { id: "conexao", rotulo: "Conexão", grupo: "WhatsApp", icone: "phone" },
-  { id: "grupos", rotulo: "Grupos", grupo: "WhatsApp", icone: "users" },
-  { id: "sincronizacao", rotulo: "Sincronização", grupo: "WhatsApp", icone: "refresh" },
+  { id: "grupos", rotulo: "Gestão de grupos", grupo: "WhatsApp", icone: "users", href: "/config/grupos" },
   { id: "notificacoes", rotulo: "Alertas do painel", grupo: "Notificações", icone: "bell" },
   { id: "radar", rotulo: "Radar", grupo: "Notificações", icone: "alert" },
   { id: "modelos", rotulo: "Modelos de IA", grupo: "Inteligência Artificial", icone: "spark" },
   { id: "transcricao", rotulo: "Transcrição", grupo: "Inteligência Artificial", icone: "mic" },
   { id: "respostas", rotulo: "Respostas prontas", grupo: "Atendimento", icone: "chat" },
   { id: "expediente", rotulo: "Horário comercial", grupo: "Atendimento", icone: "clock" },
-  { id: "time", rotulo: "Meu time", grupo: "Atendimento", icone: "user" },
   { id: "webhooks", rotulo: "Webhooks", grupo: "Integrações", icone: "link" },
 ];
 

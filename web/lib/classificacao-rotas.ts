@@ -10,6 +10,7 @@ export const CLASSIFICACAO: Record<string, 'dono' | 'atendimento' | 'publico'> =
   '(painel)/(caixa)/inbox/page.tsx': 'dono',
   '(painel)/agenda/page.tsx': 'dono',
   '(painel)/clientes/page.tsx': 'dono',
+  '(painel)/config/grupos/page.tsx': 'dono',
   '(painel)/config/page.tsx': 'dono',
   '(painel)/dashboard/page.tsx': 'dono',
   '(painel)/equipe/page.tsx': 'dono',

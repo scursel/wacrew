@@ -5,15 +5,13 @@ import { CorpoPagina, Grade12 } from "@/app/components/ui";
 import { secaoAtiva } from "@/lib/secao-ativa";
 import { ConexaoCard } from "./ConexaoCard";
 import { ExpedienteCard } from "./ExpedienteCard";
-import { GruposCard } from "./GruposCard";
+import { GruposAtalhoCard } from "./GruposAtalhoCard";
 import { ModelosCard } from "./ModelosCard";
 import { NavSecoes } from "./NavSecoes";
 import { NotificacoesCard } from "./NotificacoesCard";
 import { RadarCard } from "./RadarCard";
 import { RespostasProntasCard } from "./RespostasProntasCard";
 import { type IdSecao, type Resumo, SECOES } from "./secoes";
-import { SincronizacaoCard } from "./SincronizacaoCard";
-import { TimeCard } from "./TimeCard";
 import { TranscricaoCard } from "./TranscricaoCard";
 import { WebhooksCard } from "./WebhooksCard";
 
@@ -108,15 +106,13 @@ export function ConfigView() {
         <div ref={cardsRef}>
           <Grade12>
             <ConexaoCard aoResumir={resumir} />
-            <GruposCard aoResumir={resumir} />
-            <SincronizacaoCard aoResumir={resumir} />
+            <GruposAtalhoCard aoResumir={resumir} />
             <NotificacoesCard aoResumir={resumir} />
             <RadarCard aoResumir={resumir} />
             <ModelosCard aoResumir={resumir} />
             <TranscricaoCard aoResumir={resumir} />
             <RespostasProntasCard aoResumir={resumir} />
             <ExpedienteCard aoResumir={resumir} />
-            <TimeCard aoResumir={resumir} />
             <WebhooksCard aoResumir={resumir} />
           </Grade12>
         </div>

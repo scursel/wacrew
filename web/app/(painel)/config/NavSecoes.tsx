@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef } from "react";
 import { cn, Icone } from "@/app/components/ui";
 import { type IdSecao, type Resumo, SECOES } from "./secoes";
@@ -55,9 +56,9 @@ export function NavSecoes({
                 const alerta = resumo?.tom === "danger";
                 return (
                   <li key={s.id}>
-                    <a
-                      href={`#${s.id}`}
-                      onClick={clicar(s.id)}
+                    <Link
+                      href={s.href ?? `#${s.id}`}
+                      onClick={s.href ? undefined : clicar(s.id)}
                       aria-current={atual ? "true" : undefined}
                       className={cn(
                         "focus-ring relative flex h-9 items-center gap-2.5 rounded-control px-2.5 text-[13px] transition-colors",
@@ -87,7 +88,8 @@ export function NavSecoes({
                           {resumo.texto}
                         </span>
                       )}
-                    </a>
+                      {s.href && <Icone nome="chev-r" tamanho={13} className="shrink-0 text-fg-faint" />}
+                    </Link>
                   </li>
                 );
               })}
@@ -105,11 +107,11 @@ export function NavSecoes({
           const atual = s.id === ativa;
           const alerta = resumos[s.id]?.tom === "danger";
           return (
-            <a
+            <Link
               key={s.id}
               data-secao={s.id}
-              href={`#${s.id}`}
-              onClick={clicar(s.id)}
+              href={s.href ?? `#${s.id}`}
+              onClick={s.href ? undefined : clicar(s.id)}
               aria-current={atual ? "true" : undefined}
               className={cn(
                 "focus-ring relative inline-flex h-9 shrink-0 items-center rounded-full px-3.5 text-[13px] font-medium transition-colors",
@@ -126,7 +128,8 @@ export function NavSecoes({
                   )}
                 />
               )}
-            </a>
+              {s.href && <Icone nome="chev-r" tamanho={12} className="ml-1 text-current opacity-60" />}
+            </Link>
           );
         })}
       </div>
