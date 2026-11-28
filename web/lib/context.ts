@@ -21,6 +21,7 @@ import {
   roleOf,
 } from "./contacts";
 import type { MessageView, Origem } from "./data";
+import { isDisplayName } from "./chat-contacts";
 
 /** Versão compacta de uma mensagem (com papel e menções resolvidas), pronta pra IA consumir. */
 export type CompactMsg = {
@@ -84,9 +85,9 @@ export function label(c: Contacts, jid: string | null | undefined): string | und
   // LID do próprio eu via sidecar (msgs fromMe usam telefone; citação traz @lid).
   const phone = c.phones.get(num);
   if (phone && c.ownIds.has(phone)) return "você";
-  const name = c.names.get(num) ?? (phone ? c.names.get(phone) : undefined);
-  if (name && name !== "desconhecido" && !/^\d{6,}$/.test(name.trim())) return name;
-  return undefined;
+  // O cadastro do LID pode guardar só o número: aí vale o nome do cadastro do telefone.
+  const name = [c.names.get(num), phone ? c.names.get(phone) : undefined].find((n) => n !== "desconhecido" && isDisplayName(n));
+  return name?.trim();
 }
 
 /**

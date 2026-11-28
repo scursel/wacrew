@@ -16,9 +16,19 @@ export function numberFromJid(jid: string): string {
   return (jid.split("@")[0] ?? "").split(":")[0] ?? "";
 }
 
-/** true se parece id numérico cru (LID/telefone), não um nome. */
-function looksLikeRawId(s: string): boolean {
-  return /^\d{6,}$/.test(s.trim());
+/**
+ * true se parece id cru, não um nome: só dígitos (LID/telefone), telefone formatado
+ * ("+55 (11) 99999-9999") ou jid inteiro ("2778...@lid").
+ */
+export function looksLikeRawId(s: string): boolean {
+  const t = s.trim();
+  if (/^[\d:]+@[\w.]+$/.test(t)) return true;
+  return /^[+\d\s().-]+$/.test(t) && t.replace(/\D/g, "").length >= 6;
+}
+
+/** Nome que dá pra mostrar: não vazio, não "Você" e não id cru. */
+export function isDisplayName(s: string | null | undefined): s is string {
+  return !!s?.trim() && s.trim() !== "Você" && !looksLikeRawId(s);
 }
 
 type MsgParaContatos = {
@@ -47,7 +57,9 @@ export function contactsFromMessages(
   for (const m of messages) {
     const num = numberFromJid(m.sender);
     if (!num) continue;
-    if (!names.has(num)) names.set(num, m.senderName);
+    // O 1º nome visto fica, mas um id cru (telefone no lugar do nome) dá lugar ao nome real.
+    const atual = names.get(num);
+    if (atual === undefined || (!isDisplayName(atual) && isDisplayName(m.senderName))) names.set(num, m.senderName);
     if (m.fromMe === true) mine.add(num);
   }
 
@@ -61,13 +73,13 @@ export function contactsFromMessages(
       mine.add(qNum);
       continue;
     }
-    if (orig.senderName && !looksLikeRawId(orig.senderName) && orig.senderName !== "Você") {
+    if (isDisplayName(orig.senderName)) {
       names.set(qNum, orig.senderName.trim());
       continue;
     }
     const origNum = numberFromJid(orig.sender);
     const known = origNum ? names.get(origNum) : undefined;
-    if (known && !looksLikeRawId(known) && known !== "Você") names.set(qNum, known);
+    if (isDisplayName(known)) names.set(qNum, known.trim());
   }
 
   return { names, mine, team };
@@ -79,7 +91,6 @@ export function senderLabel(jid: string | null | undefined, contacts: ChatContac
   const num = numberFromJid(jid);
   if (!num) return null;
   if (contacts.mine.has(num)) return "você";
-  const name = contacts.names.get(num)?.trim();
-  if (name && name !== "Você" && !looksLikeRawId(name)) return name;
-  return null;
+  const name = contacts.names.get(num);
+  return isDisplayName(name) ? name.trim() : null;
 }

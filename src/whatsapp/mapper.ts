@@ -593,7 +593,8 @@ function extractQuoted(
   let sender = ctx?.participant || null;
   const meId = sock?.user?.id;
   const meLid = sock?.user?.lid;
-  if (sender && meId && meLid && userPart(sender) === userPart(meLid)) {
+  // Só um @lid é comparado com o nosso LID: telefone de contato com os mesmos dígitos não é a gente.
+  if (sender && meId && meLid && sender.endsWith('@lid') && userPart(sender) === userPart(meLid)) {
     sender = meId;
   }
   return { id: ctx?.stanzaId || null, text, sender };
